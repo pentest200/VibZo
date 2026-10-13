@@ -1,0 +1,48 @@
+{
+  "name": "chat-application",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@12.11.2",
+  "engines": {
+    "node": "^22.13.0 || ^24.0.0"
+  },
+  "scripts": {
+    "typecheck": "pnpm -r typecheck && tsc -p tsconfig.tools.json --noEmit",
+    "lint": "eslint . && tsx scripts/check-boundaries.ts",
+    "test": "vitest run --config vitest.config.ts",
+    "build": "pnpm -r build",
+    "dev": "pnpm --parallel --filter './apps/*' dev",
+    "infra:config": "tsx scripts/infra.ts config",
+    "infra:up": "tsx scripts/infra.ts up",
+    "infra:down": "tsx scripts/infra.ts down",
+    "infra:media": "tsx scripts/infra.ts media",
+    "infra:scanner": "tsx scripts/infra.ts scanner",
+    "test:integration:foundation": "vitest run --config tests/integration/vitest.config.ts",
+    "test:foundation:http": "vitest run --config tests/http/vitest.config.ts",
+    "db:migrate": "tsx scripts/migrate.ts",
+    "auth:benchmark": "tsx scripts/auth-benchmark.ts",
+    "seed:development": "tsx scripts/seed-development.ts",
+    "test:integration:auth": "vitest run --config tests/integration/auth.config.ts",
+    "test:e2e:auth": "playwright test --config tests/e2e/playwright.config.ts"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "22.20.5",
+    "eslint": "10.12.0",
+    "tsx": "4.23.15",
+    "typescript": "6.0.3",
+    "typescript-eslint": "8.71.2",
+    "vitest": "5.0.4",
+    "@chat/contracts": "workspace:*",
+    "@chat/config": "workspace:*",
+    "@chat/domain": "workspace:*",
+    "@chat/observability": "workspace:*",
+    "@chat/api": "workspace:*",
+    "mongodb": "7.7.0",
+    "redis": "6.3.0",
+    "amqplib": "2.2.0",
+    "@aws-sdk/client-s3": "3.1150.0",
+    "@playwright/test": "1.64.0"
+  }
+}

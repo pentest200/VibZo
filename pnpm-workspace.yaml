@@ -1,0 +1,39 @@
+packages:
+  - apps/*
+  - packages/*
+minimumReleaseAgeExclude:
+  - '@aws-sdk/checksums@3.1001.3'
+  - '@aws-sdk/client-s3@3.1150.0'
+  - '@aws-sdk/core@3.978.3'
+  - '@aws-sdk/credential-provider-env@3.972.74'
+  - '@aws-sdk/credential-provider-http@3.972.76'
+  - '@aws-sdk/credential-provider-ini@3.973.19'
+  - '@aws-sdk/credential-provider-login@3.972.81'
+  - '@aws-sdk/credential-provider-node@3.972.86'
+  - '@aws-sdk/credential-provider-process@3.972.74'
+  - '@aws-sdk/credential-provider-sso@3.973.18'
+  - '@aws-sdk/credential-provider-web-identity@3.972.80'
+  - '@aws-sdk/middleware-sdk-s3@3.972.79'
+  - '@aws-sdk/nested-clients@3.997.48'
+  - '@aws-sdk/token-providers@3.1150.0'
+  - '@typescript-eslint/eslint-plugin@8.71.2'
+  - '@typescript-eslint/parser@8.71.2'
+  - '@typescript-eslint/project-service@8.71.2'
+  - '@typescript-eslint/scope-manager@8.71.2'
+  - '@typescript-eslint/tsconfig-utils@8.71.2'
+  - '@typescript-eslint/type-utils@8.71.2'
+  - '@typescript-eslint/types@8.71.2'
+  - '@typescript-eslint/typescript-estree@8.71.2'
+  - '@typescript-eslint/utils@8.71.2'
+  - '@typescript-eslint/visitor-keys@8.71.2'
+  - typescript-eslint@8.71.2
+  - zod@4.6.7
+storeDir: .pnpm-store
+cacheDir: .cache/pnpm
+engineStrict: true
+strictPeerDependencies: true
+savePrefix: ''
+allowBuilds:
+  esbuild: true
+  '@nestjs/core': false
+  argon2: true

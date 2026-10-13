@@ -1,0 +1,12 @@
+# Loopback development only. TURN/TLS needs a dedicated public address/certificate in Phase 07.
+port: 7880
+bind_addresses: ['0.0.0.0']
+rtc:
+  tcp_port: 7881
+  udp_port: 7882
+  use_external_ip: false
+  node_ip: 127.0.0.1
+keys:
+  devkey: local-only-livekit-secret-change-before-production
+logging:
+  level: info

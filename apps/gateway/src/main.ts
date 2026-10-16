@@ -1,4 +1,6 @@
 import { loadConfig } from '@chat/config';
-import { startFoundationProcess } from '@chat/observability';
-const config = loadConfig();
-await startFoundationProcess('gateway', config.HOST, config.GATEWAY_PORT, config.LOG_LEVEL);
+import { createGateway } from './app.js';
+const gateway = await createGateway(loadConfig());
+let stopping = false;
+const stop = async () => { if (stopping) return; stopping = true; const deadline = setTimeout(() => process.exit(1), 10000).unref(); await gateway.close(); clearTimeout(deadline); };
+process.once('SIGTERM', () => { void stop(); }); process.once('SIGINT', () => { void stop(); });

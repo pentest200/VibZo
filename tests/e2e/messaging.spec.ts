@@ -19,8 +19,8 @@ test('two real users send, reply, reconcile a lost acceptance response and retai
       else { expect(body.clientMessageId).toBe(commandId); await route.continue(); }
     });
     await page.getByLabel('Message', { exact: true }).fill('Exactly one stored command after a lost reply.');
-    await page.getByRole('button', { name: 'Send message', exact: true }).click(); await expect(page.locator('.composer').getByRole('alert')).toContainText('Retry keeps the same message ID');
-    await page.getByRole('button', { name: 'Retry message', exact: true }).click(); await expect(page.locator('.composer')).toContainText('Accepted by the server');
+    await page.getByRole('button', { name: 'Send message', exact: true }).click(); await expect(page.locator('.composer')).toContainText('original IDs');
+    await expect(page.locator('.composer')).toContainText('Accepted by the server');
     await expect(page.locator('.message-list li').filter({ hasText: 'Exactly one stored command after a lost reply.' })).toHaveCount(1);
     await page.reload(); await expect(page.locator('.message-list li')).toHaveCount(3);
     await expect(page.locator('.message-list')).toContainText('A real reply.');

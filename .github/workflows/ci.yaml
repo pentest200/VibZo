@@ -26,6 +26,8 @@ jobs:
       - run: pnpm test:integration:auth
       - run: pnpm test:integration:conversations
       - run: pnpm test:integration:messaging
+      - run: pnpm test:integration:sync
+      - run: pnpm test:failure:gateway
       - run: pnpm test:failure:outbox
       - run: pnpm exec playwright install --with-deps chromium
         env:
@@ -37,6 +39,9 @@ jobs:
         env:
           PLAYWRIGHT_BROWSERS_PATH: .cache/ms-playwright
       - run: pnpm test:e2e:messaging
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: .cache/ms-playwright
+      - run: pnpm test:e2e:sync
         env:
           PLAYWRIGHT_BROWSERS_PATH: .cache/ms-playwright
       - run: pnpm audit --prod --audit-level high

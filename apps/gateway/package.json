@@ -1,5 +1,27 @@
 {
-  "name": "@chat/gateway", "version": "0.0.0", "private": true, "type": "module",
-  "scripts": { "build": "tsc -p tsconfig.json", "typecheck": "tsc -p tsconfig.json --noEmit", "dev": "tsx watch src/main.ts", "start": "node dist/main.js" },
-  "dependencies": { "@chat/config": "workspace:*", "@chat/observability": "workspace:*" }
+  "name": "@chat/gateway",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "dev": "tsx watch src/main.ts",
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "@chat/config": "workspace:*",
+    "@chat/observability": "workspace:*",
+    "socket.io": "4.8.4",
+    "@socket.io/redis-adapter": "8.3.0",
+    "redis": "6.3.0",
+    "@chat/domain": "workspace:*",
+    "@chat/contracts": "workspace:*"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/app.d.ts",
+      "default": "./dist/app.js"
+    }
+  }
 }

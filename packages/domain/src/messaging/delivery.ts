@@ -56,7 +56,7 @@ export class EventConsumer {
       if (this.subscription === 'fanout' || reference.kind === 'message.created') {
         await this.service.db.collection<Admission>('outboxAdmission').updateOne({ _id: `projection:${this.subscription}` }, { $inc: { guardVersion: 1 } }, { session });
         const jobs = this.service.db.collection<ProjectionJob>(this.subscription === 'fanout' ? 'fanoutJobs' : 'notificationJobs');
-        if (await jobs.countDocuments({ state: 'pending' }, { session, limit: this.service.auth.config.MAX_PENDING_PROJECTIONS }) >= this.service.auth.config.MAX_PENDING_PROJECTIONS) throw new Error('Projection backlog is full');
+        if (await jobs.countDocuments({ state: { $in: ['pending', 'claimed'] } }, { session, limit: this.service.auth.config.MAX_PENDING_PROJECTIONS }) >= this.service.auth.config.MAX_PENDING_PROJECTIONS) throw new Error('Projection backlog is full');
         await jobs.insertOne({ _id: reference.eventId, schemaVersion: 1, eventId: reference.eventId, conversationId: reference.conversationId, sequence: sequenceToLong(reference.sequence), state: 'pending', createdAt: new Date() }, { session });
       }
       return true;

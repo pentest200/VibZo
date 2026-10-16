@@ -1,4 +1,4 @@
-export type ErrorCode = 'UNAUTHENTICATED' | 'FORBIDDEN' | 'INVALID_INPUT' | 'CONFLICT' | 'RATE_LIMITED' | 'UNAVAILABLE';
+export type ErrorCode = 'UNAUTHENTICATED' | 'FORBIDDEN' | 'INVALID_INPUT' | 'CONFLICT' | 'CURSOR_EXPIRED' | 'RATE_LIMITED' | 'UNAVAILABLE';
 export class DomainError extends Error {
   constructor(public readonly code: ErrorCode, message: string, public readonly status: number, public readonly retryable = false) { super(message); }
 }

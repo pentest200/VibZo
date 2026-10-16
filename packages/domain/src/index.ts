@@ -18,3 +18,7 @@ export { BrokerTransport, BrokerUnavailable, subscriptions } from './messaging/b
 export { OutboxRelay, EventConsumer, DeliveryStats, InvalidBrokerEvent, eventReference, deliveryMetrics } from './messaging/delivery.js';
 export type { MessageCommand, Effect, ProjectionJob, Subscription } from './messaging/model.js';
 export { replayDeadLetters } from './messaging/replay.js';
+export { SyncService } from './sync/service.js';
+export { syncSchemaReady } from './sync/migrations.js';
+export { FanoutWorker, syncChannel, parseFanout } from './sync/fanout.js';
+export type { Receipt, Reaction, SnapshotRecord, ReplayFloor } from './sync/model.js';

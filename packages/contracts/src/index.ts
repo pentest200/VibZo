@@ -32,3 +32,4 @@ export const readinessSchema = z.strictObject({
 export * from './auth.js';
 export * from './conversations.js';
 export * from './messaging.js';
+export * from './sync.js';

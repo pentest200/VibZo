@@ -192,11 +192,13 @@ export class ConversationService extends ConversationStore {
   async inboxFeed(token:string|undefined,after:string,through:string|undefined,limit:number){
     return this.run(async session=>{
       const principal=await this.actor(token,session),counter=await this.inboxCounter(principal.user._id,session);
+      const floor=await this.db.collection<{_id:string;floor:Long}>('replayFloors').findOne({_id:`inbox:${principal.user._id}`},{session});
+      if(floor&&sequenceToLong(after).lessThan(floor.floor))throw new DomainError('CURSOR_EXPIRED','Refresh the inbox snapshot to continue.',409);
       const watermark=through?sequenceToLong(through):counter.sequence;
       if(watermark.greaterThan(counter.sequence)||sequenceToLong(after).greaterThan(watermark))throw new DomainError('INVALID_INPUT','Invalid inbox cursor.',400);
       const rows=await this.db.collection<InboxEvent>('inboxEvents').find({userId:principal.user._id,sequence:{$gt:sequenceToLong(after),$lte:watermark}},{session}).sort({sequence:1}).limit(limit+1).toArray();
       const page=rows.slice(0,limit);
-      return {events:page.map(row=>({eventId:row._id,conversationId:row.conversationId,sequence:longToSequence(row.sequence),kind:row.kind})),nextCursor:page.length?longToSequence(page.at(-1)!.sequence):after,watermark:longToSequence(watermark),hasMore:rows.length>limit};
+      return {events:page.map(row=>({eventId:row._id,conversationId:row.conversationId,sequence:longToSequence(row.sequence),kind:row.kind})),nextCursor:rows.length>limit?longToSequence(page.at(-1)!.sequence):longToSequence(watermark),watermark:longToSequence(watermark),hasMore:rows.length>limit};
     });
   }
   async detail(token:string|undefined,id:string):Promise<Conversation>{

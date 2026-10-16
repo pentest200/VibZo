@@ -1,38 +1,26 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
-import { acceptedMessageSchema, sendMessageSchema } from '@chat/contracts';
+import { sendMessageSchema } from '@chat/contracts';
 import type { AuthSession } from '@chat/contracts';
-import { api } from './api.js';
-import { queryClient } from './auth-state.js';
+import { useSyncEngine } from './sync-context.js';
 export interface ReplyTarget { id: string; text: string }
-export function MessageComposer({ id, account, reply, clearReply }: { id: string; account: AuthSession; reply: ReplyTarget | null; clearReply: () => void }) {
-  const [text, setText] = useState(''), [clientMessageId, setId] = useState(() => crypto.randomUUID());
-  const [attempted, setAttempted] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState(''), [notice, setNotice] = useState('');
-  const [pendingReply, setPendingReply] = useState<string | undefined>();
+export function MessageComposer({ id, reply, clearReply }: { id: string; account: AuthSession; reply: ReplyTarget | null; clearReply: () => void }) {
+  const engine = useSyncEngine(), [text, setText] = useState(''), [busy, setBusy] = useState(false), [error, setError] = useState('');
   async function submit(event: FormEvent) {
-    event.preventDefault(); if (busy) return; setError(''); setNotice('');
-    const replyToId = attempted ? pendingReply : reply?.id;
-    const input = sendMessageSchema.safeParse({ v: 1, conversationId: id, clientMessageId, text, ...(replyToId ? { replyToId } : {}) });
-    if (!input.success) { setError('Write 1–4,000 characters before sending.'); return; }
-    setBusy(true); setAttempted(true); setPendingReply(replyToId);
+    event.preventDefault(); if (busy) return; setBusy(true); setError('');
     try {
-      acceptedMessageSchema.parse(await api('/messages', { method: 'POST', body: input.data, csrf: account.csrfToken }));
-      setText(''); setId(crypto.randomUUID()); setAttempted(false); setPendingReply(undefined); clearReply();
-      setNotice('Accepted by the server. Delivery and read status are not available yet.');
-      await queryClient.invalidateQueries({ queryKey: ['chat', account.user.id, 'history', id] });
-    } catch (failure) { setError(`${failure instanceof Error ? failure.message : 'The result is unconfirmed.'} Retry keeps the same message ID. Check history before discarding.`); }
+      const input = sendMessageSchema.safeParse({ v: 1, conversationId: id, clientMessageId: crypto.randomUUID(), text, ...(reply ? { replyToId: reply.id } : {}) });
+      if (!input.success) throw new Error('Write 1-4,000 characters before sending.');
+      await engine.queue({ type: 'send', body: input.data }); setText(''); clearReply(); engine.typing(id, false);
+    } catch (failure) { setError(failure instanceof Error ? failure.message : 'Could not save the pending message.'); }
     finally { setBusy(false); }
   }
-  function discard() {
-    if (attempted && !window.confirm('A previous attempt may already be accepted. Check history before discarding this draft.')) return;
-    setText(''); setAttempted(false); setId(crypto.randomUUID()); setPendingReply(undefined); setError(''); clearReply();
-  }
+  const pending = engine.pending.filter(row => row.conversationId === id);
   return <section className="chat-section composer" aria-label="Write a message"><form onSubmit={event => { void submit(event); }}>
-    {reply && !attempted && <div className="reply-preview"><p>Replying to: {reply.text.slice(0, 120)}</p><button type="button" className="button-secondary" onClick={clearReply}>Cancel reply</button></div>}
-    {attempted && pendingReply && <p className="hint">This attempt includes your selected reply.</p>}
-    <label className="field">Message<textarea name="message" rows={3} maxLength={8000} value={text} readOnly={attempted} onChange={event => setText(event.target.value)} placeholder="Write something…" /></label>
-    {error && <p role="alert" className="notice error">{error}</p>}<p role="status" className="notice">{notice}</p>
-    <div className="control-row"><button disabled={busy || !text.trim()}>{busy ? 'Sending…' : attempted ? 'Retry message' : 'Send message'}</button><button type="button" className="button-secondary" disabled={busy} onClick={discard}>Discard draft</button></div>
-    <p className="hint">Drafts and retries stay in this page only. Refreshing or leaving can discard them. History checks for updates every 5 seconds.</p>
-  </form></section>;
+    {reply && <div className="reply-preview"><p>Replying to: {reply.text.slice(0, 120)}</p><button type="button" className="button-secondary" onClick={clearReply}>Cancel reply</button></div>}
+    <label className="field">Message<textarea name="message" rows={3} maxLength={8000} value={text} onChange={event => { setText(event.target.value); engine.typing(id, true); }} placeholder="Write something..." /></label>
+    {error && <p role="alert" className="notice error">{error}</p>}<p role="status" className="notice">{engine.notice}</p>
+    <div className="control-row"><button disabled={busy || !text.trim()}>{busy ? 'Saving...' : 'Send message'}</button><button type="button" className="button-secondary" onClick={() => { setText(''); clearReply(); }}>Discard draft</button></div>
+    <p className="hint">{engine.durable ? 'Send saves a pending command before trying the network. Queued commands survive reload and retry with the same ID.' : 'Storage is unavailable. Refreshing can discard unconfirmed commands.'} Unsent text in this box stays in this page.</p>
+  </form>{pending.length > 0 && <ul className="pending-list" aria-label="Pending commands">{pending.map(row => <li key={row.key}><p>{row.command.type === 'send' ? row.command.body.text : `Pending ${row.command.body.kind}`}</p><small>{row.state === 'failed' ? row.error : 'Pending acceptance; automatic retry keeps the same command ID.'}</small><button className="button-secondary" disabled={row.leaseUntil > Date.now()} onClick={() => { if (window.confirm('This command may already be accepted. Check history before discarding.')) void engine.discard(row.key); }}>Discard pending command</button></li>)}</ul>}</section>;
 }

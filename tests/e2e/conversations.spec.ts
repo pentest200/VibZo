@@ -30,7 +30,8 @@ test('independent users create direct and group conversations, accept invitation
     await page.getByRole('button', { name: `Make owner ${bob.username}`, exact: true }).click();
     await second.reload(); await expect(second.locator('.conversation-heading')).toContainText('You are owner');
     await second.getByRole('button', { name: `Remove ${carol.username}`, exact: true }).click();
-    await third.reload(); await expect(third.getByRole('heading', { name: 'Conversation unavailable' })).toBeVisible();
+    await expect(third.getByRole('heading', { name: 'Conversation unavailable' })).toBeVisible({ timeout: 25000 });
+    await expect(third.locator('.inbox-list')).not.toContainText('Weekend plans', { timeout: 25000 });
     await expect(third.getByText('No messages have been sent here yet.')).toHaveCount(0);
     await page.goto(directUrl); await page.getByRole('button', { name: 'Block contact', exact: true }).click();
     await expect(page.getByText('New direct contact is unavailable.', { exact: false })).toBeVisible();

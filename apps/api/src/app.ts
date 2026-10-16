@@ -8,11 +8,12 @@ import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter } from '@nestjs/platform-fastify';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import type { Config } from '@chat/config';
-import { AuthService, ConversationService, MessageService, DomainError, createMongoClient, inspectMongo } from '@chat/domain';
+import { AuthService, ConversationService, MessageService, SyncService, DomainError, createMongoClient, inspectMongo } from '@chat/domain';
 import { createMetrics, createLogger } from '@chat/observability';
 import { AUTH, AuthController, sessionCookieName } from './auth.js';
 import { CONVERSATIONS, ConversationController } from './conversations.js';
 import { MESSAGES, MessageController } from './messages.js';
+import { SYNC, SyncController } from './sync.js';
 
 interface Reply { code(status: number): Reply; type(contentType: string): Reply }
 interface Health { dependencies(): Promise<{ mongodb: 'up' | 'down' }>; metrics: ReturnType<typeof createMetrics> }
@@ -47,7 +48,7 @@ export async function createApi(config: Config): Promise<{ app: NestFastifyAppli
   const health: Health = { dependencies: async () => ({ mongodb: await inspectMongo(client) ? 'up' : 'down' }), metrics };
   const adapter = new FastifyAdapter({ bodyLimit: 65536, requestTimeout: 10000, trustProxy: false, logger: false, genReqId: () => randomUUID() });
   const app = await NestFactory.create<NestFastifyApplication>({
-    module: FoundationModule, controllers: [FoundationController, AuthController, ConversationController, MessageController], providers: [{ provide: HEALTH, useValue: health }, { provide: AUTH, useValue: auth }, { provide:CONVERSATIONS,useValue:new ConversationService(auth) }, { provide:MESSAGES,useValue:new MessageService(auth) }]
+    module: FoundationModule, controllers: [FoundationController, AuthController, ConversationController, MessageController, SyncController], providers: [{ provide: HEALTH, useValue: health }, { provide: AUTH, useValue: auth }, { provide:CONVERSATIONS,useValue:new ConversationService(auth) }, { provide:MESSAGES,useValue:new MessageService(auth) }, { provide:SYNC,useValue:new SyncService(auth) }]
   }, adapter, { logger: false });
   app.setGlobalPrefix('api/v1', { exclude: ['health/live', 'health/ready', 'health/dependencies', 'metrics'] });
   await adapter.getInstance().register(cookie);
@@ -62,9 +63,11 @@ export async function createApi(config: Config): Promise<{ app: NestFastifyAppli
     }
     await auth.assertSchema();
     if (mutation) {
-      await auth.rates.consume(`mutation-ip:${request.ip}`);
       const path = request.url.split('?')[0] ?? '';
-      if (protectedMutation.has(path) || path.startsWith('/api/v1/sessions') || path.startsWith('/api/v1/conversations') || path.startsWith('/api/v1/blocks') || path.startsWith('/api/v1/messages')) {
+      // Ephemeral snapshot churn has its own bounded budget; it cannot starve accepted message commands.
+      const ephemeral = path.startsWith('/api/v1/sync/snapshots');
+      await auth.rates.consume(`${ephemeral ? 'snapshot' : 'mutation'}-ip:${request.ip}`, ephemeral ? 240 : config.AUTH_RATE_LIMIT);
+      if (protectedMutation.has(path) || path.startsWith('/api/v1/sessions') || path.startsWith('/api/v1/conversations') || path.startsWith('/api/v1/blocks') || path.startsWith('/api/v1/messages') || path.startsWith('/api/v1/sync')) {
         const raw = request.cookies[sessionCookieName(config.COOKIE_SECURE)];
         await auth.authenticate(raw);
         auth.assertCsrf(raw, typeof request.headers['x-csrf-token'] === 'string' ? request.headers['x-csrf-token'] : undefined);

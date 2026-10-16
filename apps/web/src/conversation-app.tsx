@@ -1,13 +1,15 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
-import { blocksSchema, conversationSchema, createdConversationSchema, historySchema, inboxSnapshotSchema, searchQuerySchema, searchResultSchema } from '@chat/contracts';
+import { blocksSchema, conversationSchema, createdConversationSchema, searchQuerySchema, searchResultSchema } from '@chat/contracts';
 import type { AuthSession, Conversation, PublicUser } from '@chat/contracts';
 import { api } from './api.js';
 import { queryClient, useAccount } from './auth-state.js';
 import { MessageComposer } from './message-composer.js';
 import type { ReplyTarget } from './message-composer.js';
+import { SyncProvider, SyncStatus, useSyncEngine } from './sync-context.js';
+import { SyncedHistory } from './synced-history.js';
 
 const failureMessage = (error: unknown) => error instanceof Error ? error.message : 'Please try again.';
 function ErrorNotice({ error }: { error: unknown }) { return error ? <p className="notice error" role="alert">{failureMessage(error)}</p> : null; }
@@ -19,15 +21,14 @@ export function ConversationApp() {
   if (account.isError) return <><ErrorNotice error={account.error} /><button onClick={() => { void account.refetch(); }}>Retry account</button></>;
   if (!account.data) return <Navigate to="/login" replace />;
   if (!account.data.user.verified) return <Navigate to="/account" replace />;
-  return <Chat key={account.data.user.id} account={account.data} />;
+  return <SyncProvider account={account.data}><Chat key={account.data.user.id} account={account.data} /></SyncProvider>;
 }
 function Chat({ account }: { account: AuthSession }) {
   const { id } = useParams(); const navigate = useNavigate();
   const [error, setError] = useState<unknown>(null); const [busy, setBusy] = useState(false); const [notice, setNotice] = useState('');
   const [groupCommand, setGroupCommand] = useState(() => crypto.randomUUID());
-  const inbox = useInfiniteQuery({ queryKey: ['chat', account.user.id, 'inbox'], initialPageParam: '',
-    queryFn: async ({ pageParam }) => inboxSnapshotSchema.parse(await api(`/inbox/snapshot?limit=30${pageParam ? `&after=${pageParam}` : ''}`)),
-    getNextPageParam: page => page.nextCursor ?? undefined, refetchInterval: 10000 });
+  const engine = useSyncEngine(), [inboxPage, setInboxPage] = useState(0);
+  const inbox = useQuery({ queryKey: ['chat', account.user.id, 'inbox'], queryFn: () => engine.refreshInbox(), refetchInterval: 20000 });
   const command: Command = async (path, method = 'POST', body = {}) => {
     setBusy(true); setError(null); setNotice('');
     try {
@@ -37,22 +38,23 @@ function Chat({ account }: { account: AuthSession }) {
     } catch (error) { setError(error); throw error; } finally { setBusy(false); }
   };
   const act = (operation: () => Promise<unknown>) => { void operation().catch(() => {}); };
-  const items = [...new Map(inbox.data?.pages.flatMap(page => page.items).map(item => [item.id, item])).values()];
+  const allItems = inbox.data?.items ?? [], items = allItems.slice(inboxPage * 50, (inboxPage + 1) * 50);
+  useEffect(() => { if (inboxPage * 50 >= allItems.length) setInboxPage(0); }, [allItems.length, inboxPage]);
   async function createGroup(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); const title = new FormData(event.currentTarget).get('title');
     const result = createdConversationSchema.parse(await command('/conversations/groups', 'POST', { clientCommandId: groupCommand, title }));
     setGroupCommand(crypto.randomUUID()); navigate(`/chat/${result.conversationId}`);
   }
   return <section className="chat"><div className="chat-heading"><div><span className="eyebrow">Your Commonroom</span><h1>Conversations</h1></div><Link to="/account">Account & privacy</Link></div>
-    <ErrorNotice error={error} /><p className="notice" role="status">{notice}</p>
+    <SyncStatus /><ErrorNotice error={error} /><p className="notice" role="status">{notice}</p>
     <div className="chat-grid"><aside className="chat-sidebar" aria-label="Conversations and contacts">
-      <section className="chat-section"><div className="section-heading"><h2>Your inbox</h2><button className="button-secondary" disabled={inbox.isFetching} onClick={() => { void inbox.refetch(); }}>Refresh inbox</button></div><p className="hint">Checks for updates every 10 seconds.</p>
+      <section className="chat-section"><div className="section-heading"><h2>Your inbox</h2><button className="button-secondary" disabled={inbox.isFetching} onClick={() => { void inbox.refetch(); }}>Refresh inbox</button></div><p className="hint">Live updates with periodic recovery.</p>
         <ErrorNotice error={inbox.error} />{inbox.isPending && <p role="status">Loading inbox…</p>}
         {!inbox.isPending && !inbox.isError && !items.length && <p className="empty-copy">Your people will appear here. Find a contact or start a group below.</p>}
         <ul className="inbox-list">{items.map(item => <li key={item.id}>
           {item.state === 'invited' ? <div className="invitation"><strong>{item.title}</strong><p className="hint">Group invitation</p><div className="control-row"><button disabled={busy} onClick={() => act(async () => { await command(`/conversations/${item.id}/accept`); navigate(`/chat/${item.id}`); })}>Accept {item.title}</button><button className="button-secondary" disabled={busy} onClick={() => act(() => command(`/conversations/${item.id}/decline`))}>Decline {item.title}</button></div></div>
-            : <Link className={id === item.id ? 'inbox-link selected' : 'inbox-link'} aria-current={id === item.id ? 'page' : undefined} to={`/chat/${item.id}`}><span className="avatar" aria-hidden="true">{item.title.slice(0, 1).toUpperCase()}</span><span><strong>{item.title}</strong><small>{item.kind === 'group' ? `Group · ${item.role}` : 'Direct conversation'}</small></span></Link>}
-        </li>)}</ul>{inbox.hasNextPage && <button className="button-secondary" disabled={inbox.isFetching} onClick={() => { void inbox.fetchNextPage(); }}>More conversations</button>}
+            : <Link className={id === item.id ? 'inbox-link selected' : 'inbox-link'} aria-current={id === item.id ? 'page' : undefined} to={`/chat/${item.id}`}><span className="avatar" aria-hidden="true">{item.title.slice(0, 1).toUpperCase()}</span><span><strong>{item.title}</strong>{item.unread > 0 && <small aria-label={`${item.unread >= 1000 ? '1000+' : item.unread} unread messages`}>{item.unread >= 1000 ? '1000+' : item.unread} unread</small>}<small>{item.kind === 'group' ? `Group · ${item.role}` : 'Direct conversation'}</small></span></Link>}
+        </li>)}</ul>{inboxPage > 0 && <button className="button-secondary" onClick={() => setInboxPage(inboxPage - 1)}>Previous conversations</button>}{(inboxPage + 1) * 50 < allItems.length && <button className="button-secondary" onClick={() => setInboxPage(inboxPage + 1)}>More conversations</button>}
       </section>
       <section className="chat-section"><h2>Find your people</h2><UserSearch userId={account.user.id} busy={busy} onSelect={user => act(async () => { const result = createdConversationSchema.parse(await command('/conversations/direct', 'POST', { targetUserId: user.id })); navigate(`/chat/${result.conversationId}`); })} label="Open conversation" /></section>
       <section className="chat-section"><h2>Start a group</h2><form onSubmit={event => act(() => createGroup(event))}><label className="field">Group name<input required maxLength={80} name="title" /></label><button disabled={busy}>Create group</button></form></section>
@@ -84,10 +86,11 @@ function Selected({ id, account, command, busy, act }: { id: string; account: Au
 }
 function ConversationPanel({ conversation: c, account, command, busy, act }: { conversation: Conversation; account: AuthSession; command: Command; busy: boolean; act: (operation: () => Promise<unknown>) => void }) {
   const navigate = useNavigate(); const manager = c.kind === 'group' && c.role !== 'member';
-  const [reply, setReply] = useState<ReplyTarget | null>(null);
+  const [reply, setReply] = useState<ReplyTarget | null>(null); const engine = useSyncEngine();
+  useEffect(() => { engine.select(c.id); }, [engine, c.id]);
   function reviewed(message: string, operation: () => Promise<unknown>) { if (window.confirm(message)) act(operation); }
   return <><div className="conversation-heading"><span className="eyebrow">{c.kind === 'group' ? 'Group conversation' : 'Direct conversation'}</span><h2>{c.title}</h2><p className="hint">{c.members.filter(member => member.state === 'active').length} members{c.kind === 'group' ? ` · You are ${c.role}` : ''}</p></div>
-    <History id={c.id} userId={account.user.id} onReply={setReply} canReply={!c.blocked} />
+    <SyncedHistory conversation={c} account={account} onReply={setReply} />
     {!c.blocked && <MessageComposer key={c.id} id={c.id} account={account} reply={reply} clearReply={() => setReply(null)} />}
     <div className="chat-section"><p className="hint">Attachments and calls are not available yet.</p>{c.blocked && <p className="notice">New direct contact is unavailable. Previously visible history remains accessible.</p>}
       {c.kind === 'direct' && c.otherUserId && <button disabled={busy} className="button-secondary" onClick={() => reviewed('Block this contact? New direct commands will be denied. Shared group membership is unchanged.', () => command(`/blocks/${c.otherUserId}`, 'PUT'))}>Block contact</button>}
@@ -99,9 +102,4 @@ function ConversationPanel({ conversation: c, account, command, busy, act }: { c
           {manager && member.role !== 'owner' && (c.role === 'owner' || member.role !== 'admin') && <button className="button-secondary" disabled={busy} onClick={() => reviewed(`Remove ${member.user.username} from this group?`, () => command(`/conversations/${c.id}/members/${member.user.id}`, 'DELETE'))}>Remove {member.user.username}</button>}
         </div>}</li>)}</ul><p className="hint">Invitations expire after 72 hours by default. Leaving ends history access until you rejoin. Messages from an absence remain hidden. Blocking does not remove shared group members.</p><button className="button-secondary" disabled={busy} onClick={() => reviewed('Leave this group? Owners must transfer ownership before leaving a group with other members.', async () => { await command(`/conversations/${c.id}/leave`); navigate('/chat'); })}>Leave group</button>
     </details>}</>;
-}
-function History({ id, userId, onReply, canReply }: { id: string; userId: string; onReply: (target: ReplyTarget) => void; canReply: boolean }) {
-  const history = useInfiniteQuery({ queryKey: ['chat', userId, 'history', id], initialPageParam: { before: '', through: '' }, queryFn: async ({ pageParam }) => historySchema.parse(await api(`/conversations/${id}/messages?limit=30${pageParam.before ? `&before=${pageParam.before}&through=${pageParam.through}` : ''}`)), getNextPageParam: page => page.nextCursor ? { before: page.nextCursor, through: page.watermark } : undefined, refetchInterval: 5000 });
-  const messages = history.data?.pages.flatMap(page => page.messages).reverse() ?? [];
-  return <section className="history" aria-label="Conversation history"><ErrorNotice error={history.error} />{history.isPending && <p role="status">Loading history…</p>}{history.isError ? <button onClick={() => { void history.refetch(); }}>Retry history</button> : <>{history.hasNextPage && <button className="button-secondary" disabled={history.isFetching} onClick={() => { void history.fetchNextPage(); }}>Load older messages</button>}{history.isSuccess && !messages.length && <div className="history-empty"><span aria-hidden="true">↗</span><h3>A fresh conversation.</h3><p>No messages have been sent here yet.</p></div>}<ol className="message-list">{messages.map(message => <li key={message.id}><small>{message.senderId === userId ? 'You' : 'Member'}{message.replyToId ? ' · Reply' : ''}</small><p>{message.deleted ? 'Message deleted' : message.text}</p><time dateTime={message.createdAt}>{new Date(message.createdAt).toLocaleString()}</time>{canReply && !message.deleted && <button className="button-secondary reply-button" onClick={() => onReply({ id: message.id, text: message.text })} aria-label={`Reply to ${message.text.slice(0, 40)}`}>Reply</button>}</li>)}</ol></>}</section>;
 }

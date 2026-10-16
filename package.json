@@ -30,7 +30,10 @@
     "test:integration:messaging": "vitest run --config tests/integration/messaging.config.ts",
     "test:failure:outbox": "vitest run --config tests/integration/outbox.config.ts",
     "ops:replay-dlq": "tsx scripts/replay-dlq.ts",
-    "test:e2e:messaging": "playwright test --config tests/e2e/messaging.config.ts"
+    "test:e2e:messaging": "playwright test --config tests/e2e/messaging.config.ts",
+    "test:integration:sync": "vitest run --config tests/integration/sync.config.ts",
+    "test:e2e:sync": "playwright test --config tests/e2e/sync.config.ts",
+    "test:failure:gateway": "vitest run --config tests/integration/gateway.config.ts"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
@@ -49,6 +52,8 @@
     "redis": "6.3.0",
     "amqplib": "2.2.0",
     "@aws-sdk/client-s3": "3.1150.0",
-    "@playwright/test": "1.64.0"
+    "@playwright/test": "1.64.0",
+    "socket.io-client": "4.8.4",
+    "@chat/gateway": "workspace:*"
   }
 }

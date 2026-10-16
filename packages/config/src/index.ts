@@ -29,6 +29,7 @@ const schema = z.object({
   SESSION_SECRET: z.string().min(32).default('local-only-session-secret-change-before-production'),
   COOKIE_SECURE: boolean.default(false), SCANNER_BYPASS: boolean.default(false),
   MAX_MESSAGE_CODEPOINTS: integer(4000, 4000), MAX_GROUP_MEMBERS: integer(50, 50),
+  MAX_CONVERSATIONS_PER_USER: integer(500, 1000), MAX_BLOCKS_PER_USER: integer(500, 1000), GROUP_INVITATION_HOURS: integer(72, 168),
   MAX_ATTACHMENTS: integer(8, 8), MAX_ATTACHMENT_BYTES: integer(26214400, 26214400),
   ALLOWED_ATTACHMENT_TYPES: z.string().default('jpeg,png,webp,pdf,text').transform(value => value.split(','))
     .refine(types => types.length > 0 && new Set(types).size === types.length && types.every(type => ['jpeg', 'png', 'webp', 'pdf', 'text'].includes(type)), 'Unsupported attachment allowlist'),
@@ -41,6 +42,10 @@ const schema = z.object({
   EVENT_RETENTION_DAYS: integer(90, 3650), EFFECT_RETENTION_DAYS: integer(180, 3650),
   COMPLETED_OUTBOX_RETENTION_DAYS: integer(180, 3650), CONTENT_RETENTION_DAYS: z.coerce.number().int().min(0).default(0),
   MAX_PENDING_OUTBOX: integer(100000, 1000000), BROKER_PREFETCH: integer(16, 100),
+  BROKER_NAMESPACE: z.string().regex(/^[a-zA-Z0-9_-]{1,40}$/).default('commonroom'),
+  BROKER_QUEUE_LIMIT: integer(100000, 1000000), BROKER_RETRY_ATTEMPTS: integer(5, 5),
+  BROKER_RETRY_BASE_MS: z.coerce.number().int().min(100).max(5000).default(1000),
+  MAX_PENDING_PROJECTIONS: integer(100000, 1000000),
   JOB_CONCURRENCY: integer(4, 16), LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info')
 });
 export type Config = z.infer<typeof schema>;

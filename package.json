@@ -24,7 +24,13 @@
     "auth:benchmark": "tsx scripts/auth-benchmark.ts",
     "seed:development": "tsx scripts/seed-development.ts",
     "test:integration:auth": "vitest run --config tests/integration/auth.config.ts",
-    "test:e2e:auth": "playwright test --config tests/e2e/playwright.config.ts"
+    "test:e2e:auth": "playwright test --config tests/e2e/playwright.config.ts",
+    "test:integration:conversations": "vitest run --config tests/integration/conversations.config.ts",
+    "test:e2e:conversations": "playwright test --config tests/e2e/conversations.config.ts",
+    "test:integration:messaging": "vitest run --config tests/integration/messaging.config.ts",
+    "test:failure:outbox": "vitest run --config tests/integration/outbox.config.ts",
+    "ops:replay-dlq": "tsx scripts/replay-dlq.ts",
+    "test:e2e:messaging": "playwright test --config tests/e2e/messaging.config.ts"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

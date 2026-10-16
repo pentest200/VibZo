@@ -18,7 +18,7 @@ export function createMetrics() {
 export const tracer = trace.getTracer('chat-application', '0.0.0');
 
 // Foundation processes expose liveness but refuse readiness until their functional phase.
-export async function startFoundationProcess(service: 'gateway' | 'worker', host: string, port: number, level: string) {
+export async function startFoundationProcess(service: 'gateway' | 'worker', host: string, port: number, level: string, runtime?: { ready: () => boolean; metrics: () => Promise<string> }) {
   const logger = createLogger(service, level);
   const metrics = createMetrics();
   const server = createServer(async (request, response) => {
@@ -26,14 +26,16 @@ export async function startFoundationProcess(service: 'gateway' | 'worker', host
     response.setHeader('X-Content-Type-Options', 'nosniff');
     if (request.method === 'GET' && request.url === '/metrics') {
       response.setHeader('Content-Type', metrics.contentType);
-      response.end(await metrics.metrics());
+      let extra: string; try { extra = await runtime?.metrics() ?? ''; } catch { extra = 'chat_delivery_metrics_available 0\n'; }
+      response.end(await metrics.metrics() + extra);
       return;
     }
     response.setHeader('Content-Type', 'application/json');
     if (request.method === 'GET' && request.url === '/health/live') response.end(JSON.stringify({ status: 'alive', service }));
     else if (request.method === 'GET' && request.url === '/health/ready') {
-      response.statusCode = 503;
-      response.end(JSON.stringify({ status: 'unavailable', service, phase: 'foundation' }));
+      const ready = runtime?.ready() ?? false;
+      response.statusCode = ready ? 200 : 503;
+      response.end(JSON.stringify({ status: ready ? 'ready' : 'unavailable', service, phase: runtime ? 'messaging' : 'foundation' }));
     } else { response.statusCode = 404; response.end(JSON.stringify({ code: 'NOT_FOUND' })); }
   });
   await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(port, host, resolve); });

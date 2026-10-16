@@ -1,0 +1,48 @@
+import { test, expect } from '@playwright/test';
+import { register, login, search } from './chat-fixture.js';
+test('independent users create direct and group conversations, accept invitations, transfer roles, remove and block', async ({ page, browser, request }) => {
+  const alice = await register(request, 'alice'), bob = await register(request, 'bob'), carol = await register(request, 'carol');
+  const bobContext = await browser.newContext(), carolContext = await browser.newContext(); const second = await bobContext.newPage(), third = await carolContext.newPage();
+  page.on('dialog', dialog => { void dialog.accept(); }); second.on('dialog', dialog => { void dialog.accept(); });
+  try {
+    await login(page, alice.email); await login(second, bob.email); await login(third, carol.email);
+    await search(page, bob.username); await page.getByRole('button', { name: `Open conversation with ${bob.username}`, exact: true }).click();
+    await expect(page.locator('.conversation-heading h2')).toHaveText('bob'); await expect(page.getByText('No messages have been sent here yet.')).toBeVisible();
+    const directUrl = page.url(); await second.getByRole('button', { name: 'Refresh inbox' }).click();
+    await expect(second.locator('.inbox-list')).toContainText('alice');
+    await page.getByLabel('Group name', { exact: true }).fill('Weekend draft'); await page.getByRole('button', { name: 'Create group', exact: true }).click();
+    await expect(page.locator('.conversation-heading h2')).toHaveText('Weekend draft'); const groupUrl = page.url();
+    await page.getByLabel('Group title', { exact: true }).fill('Weekend plans'); await page.getByRole('button', { name: 'Save group name' }).click();
+    await expect(page.locator('.conversation-heading h2')).toHaveText('Weekend plans');
+    await search(page, bob.username, true); await page.getByRole('button', { name: `Invite with ${bob.username}`, exact: true }).click();
+    await expect(page.locator('.member-list')).toContainText('Invitation pending');
+    await second.getByRole('button', { name: 'Refresh inbox' }).click(); await second.getByRole('button', { name: 'Accept Weekend plans' }).click();
+    await expect(second.locator('.conversation-heading h2')).toHaveText('Weekend plans');
+    await page.reload(); await page.getByRole('button', { name: `Make admin ${bob.username}`, exact: true }).click();
+    await expect(page.getByRole('button', { name: `Make member ${bob.username}`, exact: true })).toBeVisible();
+    await search(page, carol.username, true); await page.getByRole('button', { name: `Invite with ${carol.username}`, exact: true }).click();
+    await third.getByRole('button', { name: 'Refresh inbox' }).click(); await third.getByRole('button', { name: 'Accept Weekend plans' }).click();
+    await expect(third.locator('.conversation-heading h2')).toHaveText('Weekend plans');
+    await page.reload(); await expect(page.locator('.member-list')).toContainText(carol.username);
+    await expect(page.getByText('No messages have been sent here yet.')).toBeVisible();
+    await expect(page.locator('.inbox-list')).toContainText('Weekend plans');
+    await page.screenshot({ path: '.cache/qa/conversations-desktop.png', fullPage: true });
+    await page.getByRole('button', { name: `Make owner ${bob.username}`, exact: true }).click();
+    await second.reload(); await expect(second.locator('.conversation-heading')).toContainText('You are owner');
+    await second.getByRole('button', { name: `Remove ${carol.username}`, exact: true }).click();
+    await third.reload(); await expect(third.getByRole('heading', { name: 'Conversation unavailable' })).toBeVisible();
+    await expect(third.getByText('No messages have been sent here yet.')).toHaveCount(0);
+    await page.goto(directUrl); await page.getByRole('button', { name: 'Block contact', exact: true }).click();
+    await expect(page.getByText('New direct contact is unavailable.', { exact: false })).toBeVisible();
+    await page.getByText('Blocked contacts', { exact: true }).click(); await page.getByRole('button', { name: `Unblock ${bob.username}`, exact: true }).click();
+    await expect(page.getByText('New direct contact is unavailable.', { exact: false })).toHaveCount(0);
+    await page.goto(groupUrl); await page.setViewportSize({ width: 390, height: 844 });
+    await expect(page.locator('.conversation-heading h2')).toHaveText('Weekend plans');
+    await expect(page.getByText('No messages have been sent here yet.')).toBeVisible();
+    await expect(page.locator('.inbox-list')).toContainText('Weekend plans');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.screenshot({ path: '.cache/qa/conversations-mobile.png', fullPage: true });
+    await page.getByRole('button', { name: 'Leave group', exact: true }).click(); await expect(page).toHaveURL(/\/chat$/);
+    expect(await page.evaluate(() => Object.keys(localStorage))).toEqual([]);
+  } finally { await bobContext.close(); await carolContext.close(); }
+});

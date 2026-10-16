@@ -1,22 +1,14 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import { Routes, Route, Link, Navigate, useNavigate } from 'react-router-dom';
-import { QueryClient, useQuery } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { authSessionSchema, genericAuthResponseSchema, loginSchema, profileSchema, registerSchema, sessionListSchema } from '@chat/contracts';
 import type { AuthSession } from '@chat/contracts';
-import { api, currentSession } from './api.js';
+import { api } from './api.js';
+import { accountKey, clearAccount, queryClient, useAccount } from './auth-state.js';
+import { ConversationApp } from './conversation-app.js';
+export { queryClient } from './auth-state.js';
 
-export const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 0 } } });
-const accountKey = ['account-session'];
-function useAccount() { return useQuery({ queryKey: accountKey, queryFn: currentSession, refetchInterval: 30000 }); }
-function resetAccountCache() {
-  queryClient.setQueryData(accountKey, null);
-  queryClient.removeQueries({ predicate: query => query.queryKey[0] !== 'account-session' });
-  void queryClient.invalidateQueries({ queryKey: accountKey });
-}
-function clearAccount() { resetAccountCache(); channel?.postMessage({ kind: 'account-changed' }); }
-const channel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('commonroom-account') : null;
-channel?.addEventListener('message', event => { if (event.data?.kind === 'account-changed') resetAccountCache(); });
 // One-use link fragments stay in memory, never HTTP URLs/logs or durable browser storage.
 const linkToken = new URLSearchParams(window.location.hash.slice(1)).get('token') ?? '';
 if (linkToken) window.history.replaceState(null, '', window.location.pathname);
@@ -112,15 +104,15 @@ function Account() {
   }
   return <section className="account"><div className="account-heading"><div><span className="eyebrow">Your Commonroom</span><h1>Hello, {current.user.displayName}.</h1></div><button className="button-secondary" disabled={busy} onClick={() => { void action(() => signOut()); }}>Sign out</button></div><Notice message={error} error /><Notice message={message} />
     {!current.user.verified && <div className="verification"><h2>Verify your email</h2><p>Open the link we sent to {current.user.email}. This helps protect your account.</p><button disabled={busy} onClick={() => { void action(async () => { await mutation('/auth/verify/request'); setMessage('If eligible, a new verification email is on its way.'); }); }}>Send a new verification email</button></div>}
-    <div className="account-grid"><section className="panel"><h2>Profile & privacy</h2><p className="hint">{current.user.email} · {current.user.verified ? 'Email verified' : 'Awaiting verification'}</p><form onSubmit={event => { void save(event); }} key={current.user.username}><ProfileFields current={current} /><Notice message="These preferences will apply when conversations become available." /><button disabled={busy}>Save profile</button></form></section>
+    <div className="account-grid"><section className="panel"><h2>Profile & privacy</h2><p className="hint">{current.user.email} · {current.user.verified ? 'Email verified' : 'Awaiting verification'}</p><form onSubmit={event => { void save(event); }} key={current.user.username}><ProfileFields current={current} /><Notice message="Search privacy applies to new contacts. Presence will be available with live messaging." /><button disabled={busy}>Save profile</button></form></section>
     <section className="panel"><h2>Active sessions</h2>{sessions.isPending ? <p role="status">Loading sessions…</p> : sessions.isError ? <><Notice message="Couldn’t load sessions." error /><button onClick={() => { void sessions.refetch(); }}>Retry</button></> : <ul className="sessions">{sessions.data?.map(session => <li key={session.id}><div><strong>{session.deviceLabel}</strong><p>{session.current ? 'This device' : 'Another device'} · Started {new Date(session.createdAt).toLocaleDateString()}</p></div><button className="button-secondary" disabled={busy} onClick={() => { void action(async () => { await mutation(`/sessions/${session.id}`, 'DELETE'); if (session.current) { clearAccount(); navigate('/login'); } else await sessions.refetch(); }); }}>Sign out {session.current ? 'this device' : 'session'}</button></li>)}</ul>}<button disabled={busy} onClick={() => { void action(() => signOut(true)); }}>Sign out all devices</button></section>
     <section className="panel"><h2>Change password</h2><p className="hint">Changing your password signs out every device.</p><form onSubmit={event => { void password(event); }}><Field label="Current password" name="currentPassword" type="password" autoComplete="current-password" /><Field label="New password" name="password" type="password" minLength={12} autoComplete="new-password" /><button disabled={busy}>Change password</button></form></section>
-    <section className="panel coming"><span className="eyebrow">Up next</span><h2>A place for your conversations.</h2><p>Messaging and calls are still being built. Your account and session settings are ready to use.</p></section></div></section>;
+    <section className="panel coming"><span className="eyebrow">Your people</span><h2>A place for your conversations.</h2><p>Find a contact, create a group, and send a message. Your conversations are ready when you are.</p>{current.user.verified && <Link className="primary-link" to="/chat">Open conversations</Link>}</section></div></section>;
 }
 function ProfileFields({ current }: { current: AuthSession }) {
   const [username, setUsername] = useState(current.user.username); const [displayName, setDisplayName] = useState(current.user.displayName);
   return <><Field label="Display name" name="displayName" autoComplete="nickname" value={displayName} onChange={setDisplayName} /><Field label="Username" name="username" autoComplete="username" value={username} onChange={setUsername} /><label className="check"><input type="checkbox" name="showPresence" defaultChecked={current.user.privacy.showPresence} /> Show when I’m online</label><label className="check"><input type="checkbox" name="allowSearch" defaultChecked={current.user.privacy.allowSearch} /> Allow people to find my username</label></>;
 }
 export function App() {
-  return <Layout><Routes><Route path="/" element={<Home />} /><Route path="/login" element={<AuthForm />} /><Route path="/register" element={<AuthForm register />} /><Route path="/forgot" element={<ForgotPassword />} /><Route path="/verify" element={<TokenForm />} /><Route path="/reset" element={<TokenForm reset />} /><Route path="/account" element={<Account />} /><Route path="*" element={<section className="auth-card"><h1>Page not found</h1><Link to="/">Return home</Link></section>} /></Routes></Layout>;
+  return <Layout><Routes><Route path="/" element={<Home />} /><Route path="/login" element={<AuthForm />} /><Route path="/register" element={<AuthForm register />} /><Route path="/forgot" element={<ForgotPassword />} /><Route path="/verify" element={<TokenForm />} /><Route path="/reset" element={<TokenForm reset />} /><Route path="/account" element={<Account />} /><Route path="/chat" element={<ConversationApp />} /><Route path="/chat/:id" element={<ConversationApp />} /><Route path="*" element={<section className="auth-card"><h1>Page not found</h1><Link to="/">Return home</Link></section>} /></Routes></Layout>;
 }

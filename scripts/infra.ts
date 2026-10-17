@@ -32,7 +32,16 @@ switch (operation) {
     await import('./configure-attachments.js');
     break;
   case 'down': await run(['--profile', 'media', '--profile', 'scanner', 'down']); break;
-  case 'media': await run(['--profile', 'media', 'up', '-d', 'livekit']); break;
+  case 'media': {
+    await run(['--profile', 'media', 'up', '-d', 'livekit']);
+    const { loadConfig } = await import('@chat/config'), { LiveKitProvider } = await import('@chat/domain');
+    const media = new LiveKitProvider(loadConfig()), deadline = Date.now() + 30000;
+    while (!await media.health()) {
+      if (Date.now() >= deadline) throw new Error('LiveKit RoomService did not become ready');
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+    console.log('LiveKit authenticated RoomService ready'); break;
+  }
   case 'scanner': await run(['--profile', 'scanner', 'build', 'image-processor']); await run(['--profile', 'scanner', 'up', '-d', '--wait', '--wait-timeout', '900', 'clamav', 'image-processor', 'image-proxy']); break;
   default: throw new Error('Usage: infra.ts config|up|down|media|scanner');
 }

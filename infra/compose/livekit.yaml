@@ -1,4 +1,4 @@
-# Loopback development only. TURN/TLS needs a dedicated public address/certificate in Phase 07.
+# Loopback development only. Production TURN/TLS requires a dedicated address/certificate.
 port: 7880
 bind_addresses: ['0.0.0.0']
 rtc:
@@ -6,7 +6,22 @@ rtc:
   udp_port: 7882
   use_external_ip: false
   node_ip: 127.0.0.1
+turn:
+  enabled: true
+  udp_port: 3478
+  relay_range_start: 50000
+  relay_range_end: 50050
+  # The exact local SFU address is the only restricted-peer exception.
+  allow_restricted_peer_cidrs: ['127.0.0.1/32']
 keys:
   devkey: local-only-livekit-secret-change-before-production
+room:
+  auto_create: false
+  max_participants: 12
+  empty_timeout: 90
+  departure_timeout: 60
+webhook:
+  api_key: devkey
+  urls: ['http://host.docker.internal:3000/api/v1/webhooks/livekit']
 logging:
   level: info

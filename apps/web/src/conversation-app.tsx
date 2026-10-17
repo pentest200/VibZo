@@ -10,6 +10,7 @@ import { MessageComposer } from './message-composer.js';
 import type { ReplyTarget } from './message-composer.js';
 import { SyncProvider, SyncStatus, useSyncEngine } from './sync-context.js';
 import { SyncedHistory } from './synced-history.js';
+import { CallUIProvider, CallDock, CallLauncher } from './calls.js';
 
 const failureMessage = (error: unknown) => error instanceof Error ? error.message : 'Please try again.';
 function ErrorNotice({ error }: { error: unknown }) { return error ? <p className="notice error" role="alert">{failureMessage(error)}</p> : null; }
@@ -21,7 +22,7 @@ export function ConversationApp() {
   if (account.isError) return <><ErrorNotice error={account.error} /><button onClick={() => { void account.refetch(); }}>Retry account</button></>;
   if (!account.data) return <Navigate to="/login" replace />;
   if (!account.data.user.verified) return <Navigate to="/account" replace />;
-  return <SyncProvider account={account.data}><Chat key={account.data.user.id} account={account.data} /></SyncProvider>;
+  return <SyncProvider account={account.data}><CallUIProvider account={account.data}><Chat key={account.data.user.id} account={account.data} /></CallUIProvider></SyncProvider>;
 }
 function Chat({ account }: { account: AuthSession }) {
   const { id } = useParams(); const navigate = useNavigate();
@@ -46,7 +47,7 @@ function Chat({ account }: { account: AuthSession }) {
     setGroupCommand(crypto.randomUUID()); navigate(`/chat/${result.conversationId}`);
   }
   return <section className="chat"><div className="chat-heading"><div><span className="eyebrow">Your Commonroom</span><h1>Conversations</h1></div><Link to="/account">Account & privacy</Link></div>
-    <SyncStatus /><ErrorNotice error={error} /><p className="notice" role="status">{notice}</p>
+    <SyncStatus /><CallDock /><ErrorNotice error={error} /><p className="notice" role="status">{notice}</p>
     <div className="chat-grid"><aside className="chat-sidebar" aria-label="Conversations and contacts">
       <section className="chat-section"><div className="section-heading"><h2>Your inbox</h2><button className="button-secondary" disabled={inbox.isFetching} onClick={() => { void inbox.refetch(); }}>Refresh inbox</button></div><p className="hint">Live updates with periodic recovery.</p>
         <ErrorNotice error={inbox.error} />{inbox.isPending && <p role="status">Loading inbox…</p>}
@@ -59,7 +60,7 @@ function Chat({ account }: { account: AuthSession }) {
       <section className="chat-section"><h2>Find your people</h2><UserSearch userId={account.user.id} busy={busy} onSelect={user => act(async () => { const result = createdConversationSchema.parse(await command('/conversations/direct', 'POST', { targetUserId: user.id })); navigate(`/chat/${result.conversationId}`); })} label="Open conversation" /></section>
       <section className="chat-section"><h2>Start a group</h2><form onSubmit={event => act(() => createGroup(event))}><label className="field">Group name<input required maxLength={80} name="title" /></label><button disabled={busy}>Create group</button></form></section>
       <BlockList userId={account.user.id} busy={busy} command={command} act={act} />
-    </aside><div className="chat-main">{id ? <Selected key={`${account.user.id}:${id}`} id={id} account={account} command={command} busy={busy} act={act} /> : <section className="chat-welcome"><span className="brand-icon" aria-hidden="true">c.</span><h2>Make room for your people.</h2><p>Open a conversation or create a group to get started.</p><p className="hint">Send text and replies, manage invitations, and keep your people close. Calls are coming in a later phase.</p></section>}</div></div></section>;
+    </aside><div className="chat-main">{id ? <Selected key={`${account.user.id}:${id}`} id={id} account={account} command={command} busy={busy} act={act} /> : <section className="chat-welcome"><span className="brand-icon" aria-hidden="true">c.</span><h2>Make room for your people.</h2><p>Open a conversation or create a group to get started.</p><p className="hint">Send text and replies, manage invitations, and keep your people close. Voice and video calls are available when calling is enabled.</p></section>}</div></div></section>;
 }
 function UserSearch({ userId, busy, onSelect, label }: { userId: string; busy: boolean; onSelect: (user: PublicUser) => void; label: string }) {
   const [prefix, setPrefix] = useState(''); const [error, setError] = useState('');
@@ -92,7 +93,7 @@ function ConversationPanel({ conversation: c, account, command, busy, act }: { c
   return <><div className="conversation-heading"><span className="eyebrow">{c.kind === 'group' ? 'Group conversation' : 'Direct conversation'}</span><h2>{c.title}</h2><p className="hint">{c.members.filter(member => member.state === 'active').length} members{c.kind === 'group' ? ` · You are ${c.role}` : ''}</p></div>
     <SyncedHistory conversation={c} account={account} onReply={setReply} />
     {!c.blocked && <MessageComposer key={c.id} id={c.id} account={account} reply={reply} clearReply={() => setReply(null)} />}
-    <div className="chat-section"><p className="hint">Calls are coming in a later phase.</p>{c.blocked && <p className="notice">New direct contact is unavailable. Previously visible history remains accessible.</p>}
+    <div className="chat-section"><CallLauncher conversationId={c.id} blocked={c.blocked} />{c.blocked && <p className="notice">New direct contact is unavailable. Previously visible history remains accessible.</p>}
       {c.kind === 'direct' && c.otherUserId && <button disabled={busy} className="button-secondary" onClick={() => reviewed('Block this contact? New direct commands will be denied. Shared group membership is unchanged.', () => command(`/blocks/${c.otherUserId}`, 'PUT'))}>Block contact</button>}
     </div>
     {c.kind === 'group' && <details className="chat-section" open><summary>Group settings</summary>

@@ -8,7 +8,7 @@ import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter } from '@nestjs/platform-fastify';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import type { Config } from '@chat/config';
-import { AuthService, AttachmentService, ConversationService, MessageService, SyncService, SafetyService, DomainError, createMongoClient, inspectMongo } from '@chat/domain';
+import { AuthService, AttachmentService, ConversationService, MessageService, SyncService, SafetyService, CallService, DomainError, createMongoClient, inspectMongo } from '@chat/domain';
 import { createMetrics, createLogger } from '@chat/observability';
 import { AUTH, AuthController, sessionCookieName } from './auth.js';
 import { CONVERSATIONS, ConversationController } from './conversations.js';
@@ -16,6 +16,7 @@ import { MESSAGES, MessageController } from './messages.js';
 import { ATTACHMENTS, AttachmentController } from './attachments.js';
 import { SYNC, SyncController } from './sync.js';
 import { SAFETY, SafetyController } from './safety.js';
+import { CALLS, CallController, CallWebhookController } from './calls.js';
 
 interface Reply { code(status: number): Reply; type(contentType: string): Reply }
 interface Health { dependencies(): Promise<{ mongodb: 'up' | 'down' }>; metrics: ReturnType<typeof createMetrics> }
@@ -51,14 +52,16 @@ export async function createApi(config: Config): Promise<{ app: NestFastifyAppli
   const health: Health = { dependencies: async () => ({ mongodb: await inspectMongo(client) ? 'up' : 'down' }), metrics };
   const adapter = new FastifyAdapter({ bodyLimit: 65536, requestTimeout: 10000, trustProxy: false, logger: false, genReqId: () => randomUUID() });
   const app = await NestFactory.create<NestFastifyApplication>({
-    module: FoundationModule, controllers: [FoundationController, AuthController, ConversationController, MessageController, SyncController, AttachmentController, SafetyController], providers: [{ provide: SAFETY, useValue: new SafetyService(auth) }, { provide: ATTACHMENTS, useValue: attachments }, { provide: HEALTH, useValue: health }, { provide: AUTH, useValue: auth }, { provide:CONVERSATIONS,useValue:new ConversationService(auth) }, { provide:MESSAGES,useValue:new MessageService(auth) }, { provide:SYNC,useValue:new SyncService(auth) }]
-  }, adapter, { logger: false });
+    module: FoundationModule, controllers: [FoundationController, AuthController, ConversationController, MessageController, SyncController, AttachmentController, SafetyController, CallController, CallWebhookController], providers: [{ provide: CALLS, useValue: new CallService(auth) }, { provide: SAFETY, useValue: new SafetyService(auth) }, { provide: ATTACHMENTS, useValue: attachments }, { provide: HEALTH, useValue: health }, { provide: AUTH, useValue: auth }, { provide:CONVERSATIONS,useValue:new ConversationService(auth) }, { provide:MESSAGES,useValue:new MessageService(auth) }, { provide:SYNC,useValue:new SyncService(auth) }]
+  }, adapter, { logger: false, rawBody: true });
   app.setGlobalPrefix('api/v1', { exclude: ['health/live', 'health/ready', 'health/dependencies', 'metrics'] });
   await adapter.getInstance().register(cookie);
+  adapter.getInstance().addContentTypeParser('application/webhook+json', { parseAs: 'buffer' }, (_request, body, done) => done(null, body));
   const protectedMutation = new Set(['/api/v1/auth/logout', '/api/v1/auth/password', '/api/v1/auth/verify/request', '/api/v1/me']);
   adapter.getInstance().addHook('preHandler', async (request, reply) => {
     if (!request.routeOptions.url?.startsWith('/api/v1/')) return;
     reply.header('X-Request-Id', request.id);
+    if (request.routeOptions.url === '/api/v1/webhooks/livekit') return; // Exact raw-body provider JWT verification replaces browser Origin/CSRF here only.
     const mutation = !['GET', 'HEAD', 'OPTIONS'].includes(request.method);
     if (mutation) {
       if (request.headers.origin !== config.WEB_ORIGIN) throw new DomainError('FORBIDDEN', 'This request is not allowed.', 403);
@@ -70,7 +73,7 @@ export async function createApi(config: Config): Promise<{ app: NestFastifyAppli
       // Ephemeral snapshot churn has its own bounded budget; it cannot starve accepted message commands.
       const ephemeral = path.startsWith('/api/v1/sync/snapshots');
       await auth.rates.consume(`${ephemeral ? 'snapshot' : 'mutation'}-ip:${request.ip}`, ephemeral ? 240 : config.AUTH_RATE_LIMIT);
-      if (protectedMutation.has(path) || path.startsWith('/api/v1/safety') || path.startsWith('/api/v1/sessions') || path.startsWith('/api/v1/conversations') || path.startsWith('/api/v1/blocks') || path.startsWith('/api/v1/attachments') || path.startsWith('/api/v1/messages') || path.startsWith('/api/v1/sync')) {
+      if (protectedMutation.has(path) || path.startsWith('/api/v1/calls') || path.startsWith('/api/v1/safety') || path.startsWith('/api/v1/sessions') || path.startsWith('/api/v1/conversations') || path.startsWith('/api/v1/blocks') || path.startsWith('/api/v1/attachments') || path.startsWith('/api/v1/messages') || path.startsWith('/api/v1/sync')) {
         const raw = request.cookies[sessionCookieName(config.COOKIE_SECURE)];
         await auth.authenticate(raw);
         auth.assertCsrf(raw, typeof request.headers['x-csrf-token'] === 'string' ? request.headers['x-csrf-token'] : undefined);

@@ -8,6 +8,7 @@ import type { AttachmentRecord } from '../attachments/model.js';
 import type { SafetyService } from './service.js';
 import type { DeletionJob } from './model.js';
 import { safetySchemaReady } from './migrations.js';
+import { pendingCallCleanup } from '../calls/cleanup.js';
 
 export class SafetyMaintenance {
   private conversationCursor: string | undefined;
@@ -71,6 +72,7 @@ export class SafetyMaintenance {
           // Invalidate all inbox snapshots (including peer display names); tickets are ephemeral.
           await db.collection('syncSnapshots').deleteMany({ kind: 'inbox' }, { session });
         }
+        if (!more) more = await pendingCallCleanup(db, user._id, session);
         if (!more) {
           await db.collection<AttachmentRecord>('attachments').updateMany({ ownerId: user._id, state: 'deleted' }, { $set: { name: 'Deleted file', sha256: '', approvedSha256: null } }, { session });
           await users.updateOne({ _id: user._id }, { $set: { deletionState: 'deleted', updatedAt: new Date() } }, { session });

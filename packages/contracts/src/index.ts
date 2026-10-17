@@ -36,3 +36,4 @@ export * from './sync.js';
 
 export * from './attachments.js';
 export * from './safety.js';
+export * from './calls.js';

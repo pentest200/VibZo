@@ -1,16 +1,17 @@
 import { setTimeout as delay } from 'node:timers/promises';
 import { loadConfig } from '@chat/config';
 import { startFoundationProcess, createLogger } from '@chat/observability';
-import { createMongoClient, AttachmentService, AttachmentWorker, FanoutWorker, AuthEmailWorker, AuthService, ConversationService, SafetyService, SafetyMaintenance, NotificationWorker, authSchemaReady, messagingSchemaReady, BrokerTransport, OutboxRelay, EventConsumer, DeliveryStats, deliveryMetrics, attachmentMetrics, inspectMongo } from '@chat/domain';
+import { createMongoClient, CallService, CallWorker, callMetrics, AttachmentService, AttachmentWorker, FanoutWorker, AuthEmailWorker, AuthService, ConversationService, SafetyService, SafetyMaintenance, NotificationWorker, authSchemaReady, messagingSchemaReady, BrokerTransport, OutboxRelay, EventConsumer, DeliveryStats, deliveryMetrics, attachmentMetrics, inspectMongo } from '@chat/domain';
 const config = loadConfig(), client = createMongoClient(config), db = client.db(config.MONGODB_DATABASE);
 const email = new AuthEmailWorker(db, config), logger = createLogger('worker', config.LOG_LEVEL);
 const conversations = new ConversationService(new AuthService(config, client, db)), stats = new DeliveryStats();
 let stopped = false, ready = false, broker: BrokerTransport | undefined, consumers: EventConsumer[] = [];
 const attachments = new AttachmentService(conversations.auth), attachmentWorker = new AttachmentWorker(attachments);
 const fanout = new FanoutWorker(db, config);
+const calls = new CallService(conversations.auth), callWorker = new CallWorker(calls);
 const safety = new SafetyService(conversations.auth), notifications = new NotificationWorker(safety), maintenance = new SafetyMaintenance(safety);
 const shutdown = new AbortController(); let deadline: ReturnType<typeof setTimeout> | undefined;
-const server = await startFoundationProcess('worker', config.HOST, config.WORKER_PORT, config.LOG_LEVEL, { ready: () => ready && fanout.ready && !broker?.failed && !stopped, metrics: async () => `${await deliveryMetrics(db, stats)}${await attachmentMetrics(db)}chat_fanout_ready ${fanout.ready ? 1 : 0}\nchat_fanout_pending ${await db.collection('fanoutJobs').countDocuments({ state: { $in: ['pending', 'claimed'] } })}\n` });
+const server = await startFoundationProcess('worker', config.HOST, config.WORKER_PORT, config.LOG_LEVEL, { ready: () => ready && fanout.ready && !broker?.failed && !stopped, metrics: async () => `${await deliveryMetrics(db, stats)}${await attachmentMetrics(db)}${await callMetrics(calls)}chat_fanout_ready ${fanout.ready ? 1 : 0}\nchat_fanout_pending ${await db.collection('fanoutJobs').countDocuments({ state: { $in: ['pending', 'claimed'] } })}\n` });
 const stop = () => {
   if (stopped) return; stopped = true; ready = false; shutdown.abort(); server.close();
   deadline = setTimeout(() => process.exit(1), 10000).unref();
@@ -39,6 +40,13 @@ async function safetyWork() {
     for (const work of [() => notifications.expandOnce(), () => notifications.runOnce(), () => maintenance.deletionOnce(), () => maintenance.retentionOnce(), () => maintenance.eventRetentionOnce(), () => maintenance.inboxRetentionOnce()]) {
       try { await work(); } catch { logger.warn({ code: 'SAFETY_DELAYED' }, 'safety maintenance delayed'); }
     }
+    await pause(1000);
+  }
+}
+async function mediaReconciliation() {
+  while (!stopped) {
+    try { await callWorker.webhookOnce(); for (let n = 0; n < config.JOB_CONCURRENCY && !stopped; n++) if (!await callWorker.runOnce()) break; }
+    catch { logger.warn({ code: 'MEDIA_RECONCILIATION_DELAYED' }, 'call reconciliation delayed'); }
     await pause(1000);
   }
 }
@@ -72,7 +80,7 @@ async function durableDelivery() {
     await pause(failures ? Math.min(30000, 500 * 2 ** Math.min(failures, 6)) + Math.floor(Math.random() * 250) : 250);
   }
 }
-try { await Promise.all([accountMaintenance(), durableDelivery(), liveDelivery(), attachmentChecks(), safetyWork()]); }
+try { await Promise.all([accountMaintenance(), durableDelivery(), liveDelivery(), attachmentChecks(), safetyWork(), mediaReconciliation()]); }
 finally {
   ready = false; for (const consumer of consumers) await consumer.stop();
   attachments.close(); await fanout.close(); await broker?.close(); await client.close(); if (deadline) clearTimeout(deadline);

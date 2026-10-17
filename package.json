@@ -5,7 +5,7 @@
   "type": "module",
   "packageManager": "pnpm@12.11.2",
   "engines": {
-    "node": "^22.13.0 || ^24.0.0"
+    "node": "^22.22.0 || ^24.0.0"
   },
   "scripts": {
     "typecheck": "pnpm -r typecheck && tsc -p tsconfig.tools.json --noEmit",
@@ -40,27 +40,31 @@
     "test:integration:safety": "vitest run --config tests/integration/safety.config.ts",
     "test:e2e:safety": "playwright test --config tests/e2e/safety.config.ts",
     "ops:safety": "tsx scripts/safety-jobs.ts",
-    "push:configure": "tsx scripts/configure-push.ts"
+    "push:configure": "tsx scripts/configure-push.ts",
+    "test:integration:calls": "vitest run --config tests/integration/calls.config.ts",
+    "test:e2e:calls": "playwright test --config tests/e2e/calls.config.ts",
+    "test:e2e:calls:relay": "playwright test --config tests/e2e/calls-relay.config.ts"
   },
   "devDependencies": {
+    "@aws-sdk/client-s3": "3.1150.0",
+    "@chat/api": "workspace:*",
+    "@chat/config": "workspace:*",
+    "@chat/contracts": "workspace:*",
+    "@chat/domain": "workspace:*",
+    "@chat/gateway": "workspace:*",
+    "@chat/observability": "workspace:*",
     "@eslint/js": "10.0.1",
+    "@playwright/test": "1.64.0",
     "@types/node": "22.20.5",
+    "amqplib": "2.2.0",
     "eslint": "10.12.0",
+    "livekit-server-sdk": "2.19.1",
+    "mongodb": "7.7.0",
+    "redis": "6.3.0",
+    "socket.io-client": "4.8.4",
     "tsx": "4.23.15",
     "typescript": "6.0.3",
     "typescript-eslint": "8.71.2",
-    "vitest": "5.0.4",
-    "@chat/contracts": "workspace:*",
-    "@chat/config": "workspace:*",
-    "@chat/domain": "workspace:*",
-    "@chat/observability": "workspace:*",
-    "@chat/api": "workspace:*",
-    "mongodb": "7.7.0",
-    "redis": "6.3.0",
-    "amqplib": "2.2.0",
-    "@aws-sdk/client-s3": "3.1150.0",
-    "@playwright/test": "1.64.0",
-    "socket.io-client": "4.8.4",
-    "@chat/gateway": "workspace:*"
+    "vitest": "5.0.4"
   }
 }

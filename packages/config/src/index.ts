@@ -35,6 +35,8 @@ const schema = z.object({
   AUTH_HASH_CONCURRENCY: integer(2, 4),
   LIVEKIT_URL: z.url().default('ws://127.0.0.1:7880'), LIVEKIT_API_KEY: z.string().default('devkey'),
   LIVEKIT_API_SECRET: z.string().min(32).default('local-only-livekit-secret-change-before-production'),
+  LIVEKIT_API_URL: z.url().default('http://127.0.0.1:7880'), CALLS_ENABLED: boolean.default(false),
+  MAX_OPEN_CALLS: integer(1000, 10000), MAX_CALL_ROTATIONS: integer(20, 50),
   SESSION_SECRET: z.string().min(32).default('local-only-session-secret-change-before-production'),
   COOKIE_SECURE: boolean.default(false), SCANNER_BYPASS: boolean.default(false),
   MAX_MESSAGE_CODEPOINTS: integer(4000, 4000), MAX_GROUP_MEMBERS: integer(50, 50),
@@ -69,6 +71,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
   if (new URL(config.WEB_ORIGIN).origin !== config.WEB_ORIGIN) throw new Error('WEB_ORIGIN must be an exact origin');
   if (config.EFFECT_RETENTION_DAYS < config.COMPLETED_OUTBOX_RETENTION_DAYS) throw new Error('Effect retention must cover completed outbox retention');
   if (config.NODE_ENV === 'production') {
+    if (config.CALLS_ENABLED && (!env['LIVEKIT_API_URL'] || !config.LIVEKIT_API_URL.startsWith('https://'))) throw new Error('Production calls require an explicit TLS media API URL');
     if (!env['IMAGE_PROCESSOR_KEY'] || config.IMAGE_PROCESSOR_KEY.startsWith('local-only') || !config.IMAGE_PROCESSOR_URL.startsWith('https://')) throw new Error('Production requires explicit authenticated TLS image processing');
     if (!env['AUTH_EMAIL_KEY'] || config.AUTH_EMAIL_KEY.startsWith('local-only')) throw new Error('Production requires an explicit email encryption key');
     if (!config.SMTP_SECURE || !config.SMTP_USER || !config.SMTP_PASSWORD || !env['EMAIL_FROM']) throw new Error('Production requires explicit authenticated TLS email configuration');

@@ -20,6 +20,7 @@
     "@chat/contracts": "workspace:*",
     "amqplib": "2.2.0",
     "argon2": "0.45.1",
+    "livekit-server-sdk": "2.19.1",
     "mongodb": "7.7.0",
     "nodemailer": "10.1.0",
     "redis": "6.3.0",

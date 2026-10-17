@@ -1,5 +1,5 @@
 import { loadConfig } from '@chat/config';
-import { AttachmentStorage, BrokerTransport, createMongoClient, runMigrations } from '@chat/domain';
+import { AttachmentStorage, BrokerTransport, LiveKitProvider, createMongoClient, runMigrations } from '@chat/domain';
 export default async function setup() {
   const name = process.env['E2E_DATABASE'];
   if (!name?.startsWith('chat_e2e_auth_')) throw new Error('E2E requires an isolated auth test database');
@@ -18,7 +18,11 @@ export default async function setup() {
   async function cleanupTest() {
     const cleanup = createMongoClient(config);
     try {
-      await cleanup.connect(); await cleanup.db(name).dropDatabase();
+      await cleanup.connect();
+      const rooms = await cleanup.db(name).collection<{ _id: string }>('callRooms').find().toArray();
+      const media = new LiveKitProvider(config);
+      for (const room of rooms) await media.removeRoom(room._id);
+      await cleanup.db(name).dropDatabase();
       for (const bucket of [config.S3_QUARANTINE_BUCKET, config.S3_APPROVED_BUCKET]) {
         let cursor: string | undefined;
         do { const page = await storage.list(bucket, cursor); for (const object of page.Contents ?? []) if (object.Key) await storage.remove(bucket, object.Key); cursor = page.NextContinuationToken; } while (cursor);

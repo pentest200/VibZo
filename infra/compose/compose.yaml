@@ -67,11 +67,15 @@ services:
     restart: unless-stopped
   livekit:
     profiles: [media]
-    image: livekit/livekit-server:v1.13.9
+    image: livekit/livekit-server:v1.13.9@sha256:d0c04791bf63ca8dcea123571827d56ba9504bd57c8d5de60ee03b5408cc3154
     command: [--config, /etc/livekit.yaml]
     volumes: ['./livekit.yaml:/etc/livekit.yaml:ro']
-    ports: ['127.0.0.1:7880:7880', '127.0.0.1:7881:7881', '127.0.0.1:7882:7882/udp']
-    # The image has no portable curl/wget health probe; real API probe belongs in Phase 07.
+    extra_hosts: ['host.docker.internal:host-gateway']
+    mem_limit: 1g
+    cpus: 2.0
+    pids_limit: 256
+    ports: ['127.0.0.1:7880:7880', '127.0.0.1:7881:7881', '127.0.0.1:7882:7882/udp', '127.0.0.1:3478:3478/udp', '127.0.0.1:50000-50050:50000-50050/udp']
+    # CallService performs the authenticated RoomService health check.
     restart: unless-stopped
   clamav:
     profiles: [scanner]

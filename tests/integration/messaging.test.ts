@@ -96,6 +96,6 @@ it('upgrades existing 002 pending records additively and does not replace a late
     const validator = metadata.options?.validator as { $jsonSchema: { properties: Record<string, unknown> } }; validator.$jsonSchema.properties['futureOptionalField'] = { bsonType: 'string' };
     await db.command({ collMod: 'messages', validator }); await runMigrations(db);
     const after = await db.listCollections({ name: 'messages' }).next(); expect(JSON.stringify(after)).toContain('futureOptionalField');
-    expect(await db.collection('outboxAdmission').countDocuments({})).toBe(3);
+    expect(await db.collection('outboxAdmission').countDocuments({})).toBe(4);
   } finally { await db.dropDatabase(); }
 });

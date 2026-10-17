@@ -43,7 +43,7 @@ it('assigns contiguous exact Long sequences to concurrent messages above 2^53', 
   const results = await Promise.all(Array.from({ length: 5 }, (_, index) => f.service.send(a.token, command(id, `Message ${index}`))));
   expect(results.map(result => BigInt(result.message.creationSequence)).sort((a, b) => a < b ? -1 : 1)).toEqual([9007199254740994n, 9007199254740995n, 9007199254740996n, 9007199254740997n, 9007199254740998n]);
 });
-it('rejects missing, foreign, deleted and invisible reply targets and unsupported attachments', async () => {
+it('rejects missing, foreign, deleted and invisible reply targets and unknown attachments', async () => {
   const a = await f.user('replyowner'), b = await f.user('replymember'), id = (await f.service.createGroup(a.token, randomUUID(), 'Reply visibility')).conversationId;
   const before = await f.service.send(a.token, command(id, 'Before membership')); await f.service.invite(a.token, id, b.id); await f.service.respondInvitation(b.token, id, true);
   await expect(f.service.send(b.token, { ...command(id), replyToId: before.message.messageId })).rejects.toMatchObject({ status: 403 });
@@ -54,7 +54,7 @@ it('rejects missing, foreign, deleted and invisible reply targets and unsupporte
   await f.db.collection<MessageRecord>('messages').updateOne({ _id: visible.message.messageId }, { $set: { deletedAt: new Date() } });
   await expect(f.service.send(a.token, { ...command(id), replyToId: visible.message.messageId })).rejects.toMatchObject({ status: 403 });
   await expect(f.service.send(a.token, { ...command(id), replyToId: randomUUID() })).rejects.toMatchObject({ status: 403 });
-  await expect(f.service.send(a.token, { ...command(id), attachmentIds: [randomUUID()] })).rejects.toMatchObject({ status: 400 });
+  await expect(f.service.send(a.token, { ...command(id), attachmentIds: [randomUUID()] })).rejects.toMatchObject({ status: 409 });
 });
 it('enforces normalization/length and rolls back every send effect if the sequence is exhausted', async () => {
   const a = await f.user('exhaust'), id = (await f.service.createGroup(a.token, randomUUID(), 'Exhausted')).conversationId;

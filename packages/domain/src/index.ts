@@ -22,3 +22,11 @@ export { SyncService } from './sync/service.js';
 export { syncSchemaReady } from './sync/migrations.js';
 export { FanoutWorker, syncChannel, parseFanout } from './sync/fanout.js';
 export type { Receipt, Reaction, SnapshotRecord, ReplayFloor } from './sync/model.js';
+
+export { AttachmentService } from './attachments/service.js';
+export { AttachmentWorker } from './attachments/worker.js';
+export { AttachmentStorage } from './attachments/storage.js';
+export { attachmentSchemaReady } from './attachments/migrations.js';
+export { scanBytes, detectFile, FileRejected } from './attachments/checks.js';
+export type { AttachmentRecord, AttachmentJob, AttachmentQuota } from './attachments/model.js';
+export { attachmentMetrics } from './attachments/metrics.js';

@@ -1,3 +1,5 @@
+import { associateAttachments } from '../attachments/store.js';
+import { attachmentSchemaReady } from '../attachments/migrations.js';
 import { randomUUID } from 'node:crypto';
 import { sendMessageSchema } from '@chat/contracts';
 import type { AcceptedMessage } from '@chat/contracts';
@@ -17,7 +19,8 @@ export class MessageService extends ConversationService {
     if (!parsed.success) throw new DomainError('INVALID_INPUT', 'Check the message fields and length.', 400);
     const input = parsed.data, text = input.text.replace(/\r\n?/g, '\n').normalize('NFC');
     if (Array.from(text).length > this.auth.config.MAX_MESSAGE_CODEPOINTS) throw new DomainError('INVALID_INPUT', 'The message exceeds the configured length.', 400);
-    if (input.attachmentIds.length) throw new DomainError('INVALID_INPUT', 'Attachments are not available yet.', 400);
+    if (input.attachmentIds.length > this.auth.config.MAX_ATTACHMENTS) throw new DomainError('INVALID_INPUT', 'Too many files selected.', 400);
+    if (input.attachmentIds.length && !await attachmentSchemaReady(this.db)) throw unavailable();
     if (!await messagingSchemaReady(this.db)) throw unavailable();
     const messageId = randomUUID(), eventId = randomUUID(), now = new Date();
     const digest = tokenHash(JSON.stringify({ v: 1, conversationId: input.conversationId, text, replyToId: input.replyToId ?? null, attachmentIds: input.attachmentIds }));
@@ -31,8 +34,9 @@ export class MessageService extends ConversationService {
         const visible = await this.db.collection<VisibilityRecord>('visibilityIntervals').findOne({ conversationId: input.conversationId, userId: senderId, startSeq: { $lte: reply.creationSeq }, $or: [{ endSeq: null }, { endSeq: { $gt: reply.creationSeq } }] }, { session });
         if (!visible) throw denied();
       }
+      if (input.attachmentIds.length) await associateAttachments(this.db, senderId, input.conversationId, input.attachmentIds, messageId, session);
       const creationSeq = await this.event(input.conversationId, senderId, 'message.created', { messageId }, session, [], eventId);
-      await this.db.collection<MessageRecord>('messages').insertOne({ _id: messageId, schemaVersion: 1, ...key, originalDigest: digest, creationSeq, text, replyToId: input.replyToId ?? null, deletedAt: null, createdAt: now }, { session });
+      await this.db.collection<MessageRecord>('messages').insertOne({ _id: messageId, schemaVersion: 1, ...key, originalDigest: digest, creationSeq, text, ...(input.attachmentIds.length ? { attachmentIds: input.attachmentIds } : {}), replyToId: input.replyToId ?? null, deletedAt: null, createdAt: now }, { session });
       const command: MessageCommand = { _id: `${input.conversationId}:${senderId}:${input.clientMessageId}`, schemaVersion: 1, ...key, digest, messageId, eventId, creationSeq, createdAt: now };
       await commands.insertOne(command, { session }); return accepted(command);
     });

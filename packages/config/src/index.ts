@@ -16,6 +16,10 @@ const schema = z.object({
   S3_ACCESS_KEY: z.string().min(10).default('GK00000000000000000000000000000001'),
   S3_SECRET_KEY: z.string().min(32).default('local-only-s3-secret-change-before-production'),
   S3_QUARANTINE_BUCKET: z.string().default('chat-quarantine'), S3_APPROVED_BUCKET: z.string().default('chat-approved'),
+  CLAMAV_HOST: z.string().default('127.0.0.1'), CLAMAV_PORT: integer(3310, 65535),
+  SCANNER_TIMEOUT_MS: integer(30000, 60000), IMAGE_PROCESSOR_URL: z.url().default('http://127.0.0.1:3003'),
+  IMAGE_PROCESSOR_KEY: z.string().min(32).default('local-only-image-processor-key-change-before-production'),
+  MAX_PENDING_ATTACHMENT_JOBS: integer(10000, 100000),
   SMTP_HOST: z.string().default('127.0.0.1'), SMTP_PORT: integer(1025, 65535),
   SMTP_SECURE: boolean.default(false), SMTP_USER: z.string().optional(), SMTP_PASSWORD: z.string().optional(),
   EMAIL_FROM: z.email().default('accounts@commonroom.example.test'),
@@ -58,6 +62,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
   if (new URL(config.WEB_ORIGIN).origin !== config.WEB_ORIGIN) throw new Error('WEB_ORIGIN must be an exact origin');
   if (config.EFFECT_RETENTION_DAYS < config.COMPLETED_OUTBOX_RETENTION_DAYS) throw new Error('Effect retention must cover completed outbox retention');
   if (config.NODE_ENV === 'production') {
+    if (!env['IMAGE_PROCESSOR_KEY'] || config.IMAGE_PROCESSOR_KEY.startsWith('local-only') || !config.IMAGE_PROCESSOR_URL.startsWith('https://')) throw new Error('Production requires explicit authenticated TLS image processing');
     if (!env['AUTH_EMAIL_KEY'] || config.AUTH_EMAIL_KEY.startsWith('local-only')) throw new Error('Production requires an explicit email encryption key');
     if (!config.SMTP_SECURE || !config.SMTP_USER || !config.SMTP_PASSWORD || !env['EMAIL_FROM']) throw new Error('Production requires explicit authenticated TLS email configuration');
     if (config.ARGON_MEMORY_KIB < 19456 || config.ARGON_TIME_COST < 2) throw new Error('Production password hashing is below security minimum');

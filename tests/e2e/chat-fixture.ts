@@ -2,15 +2,16 @@ import { randomUUID } from 'node:crypto';
 import { expect } from '@playwright/test';
 import type { APIRequestContext, Page } from '@playwright/test';
 const password = 'Conversation-browser-password-123';
+const mailpitOrigin = process.env['MAILPIT_URL'] ?? 'http://127.0.0.1:8025';
 export async function register(request: APIRequestContext, name: string) {
   const username = `${name}_${randomUUID().slice(0, 8)}`, email = `${username}@example.test`;
   const response = await request.post('/api/v1/auth/register', { headers: { Origin: 'http://localhost:5173' }, data: { email, username, displayName: name, password } });
   expect(response.status()).toBe(202);
   let token = '';
   await expect.poll(async () => {
-    const messages = await (await request.get(`http://127.0.0.1:8025/api/v1/search?query=${encodeURIComponent(`to:${email}`)}`)).json() as { messages: { ID: string }[] };
+    const messages = await (await request.get(`${mailpitOrigin}/api/v1/search?query=${encodeURIComponent(`to:${email}`)}`)).json() as { messages: { ID: string }[] };
     for (const message of messages.messages) {
-      const body = await (await request.get(`http://127.0.0.1:8025/api/v1/message/${message.ID}`)).json() as { Text: string };
+      const body = await (await request.get(`${mailpitOrigin}/api/v1/message/${message.ID}`)).json() as { Text: string };
       token = body.Text.match(/\/verify#token=([A-Za-z0-9_-]{43})/)?.[1] ?? ''; if (token) return true;
     }
     return false;

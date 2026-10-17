@@ -1,3 +1,4 @@
+import { messageAttachments } from '../attachments/store.js';
 import { randomUUID } from 'node:crypto';
 import { Long } from 'mongodb';
 import type { ClientSession, Filter } from 'mongodb';
@@ -223,8 +224,8 @@ export class ConversationService extends ConversationStore {
         {$lookup:{from:'visibilityIntervals',let:{seq:'$creationSeq'},pipeline:[{$match:{conversationId:id,userId:ctx.principal.user._id,$expr:{$and:[{$lte:['$startSeq','$$seq']},{$or:[{$eq:['$endSeq',null]},{$gt:['$endSeq','$$seq']}]}]}}},{$limit:1}],as:'_visible'}},
         {$match:{'_visible.0':{$exists:true}}},{$limit:limit+1},{$project:{_visible:0}}
       ],{session,maxTimeMS:3000}).toArray();
-      const page=rows.slice(0,limit);
-      return {messages:page.map(row=>({id:row._id,senderId:row.senderId,creationSequence:longToSequence(row.creationSeq),text:row.deletedAt?'':row.text,replyToId:row.replyToId??null,deleted:!!row.deletedAt,createdAt:row.createdAt.toISOString()})),nextCursor:rows.length>limit?longToSequence(page.at(-1)!.creationSeq):null,watermark:longToSequence(watermark)};
+      const page=rows.slice(0,limit),attachments=await messageAttachments(this.db,page,session);
+      return {messages:page.map(row=>({id:row._id,senderId:row.senderId,creationSequence:longToSequence(row.creationSeq),attachments:attachments.get(row._id)??[],text:row.deletedAt?'':row.text,replyToId:row.replyToId??null,deleted:!!row.deletedAt,createdAt:row.createdAt.toISOString()})),nextCursor:rows.length>limit?longToSequence(page.at(-1)!.creationSeq):null,watermark:longToSequence(watermark)};
     });
   }
   async expireInvitationsOnce():Promise<number>{

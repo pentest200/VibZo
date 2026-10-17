@@ -92,7 +92,7 @@ function ConversationPanel({ conversation: c, account, command, busy, act }: { c
   return <><div className="conversation-heading"><span className="eyebrow">{c.kind === 'group' ? 'Group conversation' : 'Direct conversation'}</span><h2>{c.title}</h2><p className="hint">{c.members.filter(member => member.state === 'active').length} members{c.kind === 'group' ? ` · You are ${c.role}` : ''}</p></div>
     <SyncedHistory conversation={c} account={account} onReply={setReply} />
     {!c.blocked && <MessageComposer key={c.id} id={c.id} account={account} reply={reply} clearReply={() => setReply(null)} />}
-    <div className="chat-section"><p className="hint">Attachments and calls are not available yet.</p>{c.blocked && <p className="notice">New direct contact is unavailable. Previously visible history remains accessible.</p>}
+    <div className="chat-section"><p className="hint">Calls are coming in a later phase.</p>{c.blocked && <p className="notice">New direct contact is unavailable. Previously visible history remains accessible.</p>}
       {c.kind === 'direct' && c.otherUserId && <button disabled={busy} className="button-secondary" onClick={() => reviewed('Block this contact? New direct commands will be denied. Shared group membership is unchanged.', () => command(`/blocks/${c.otherUserId}`, 'PUT'))}>Block contact</button>}
     </div>
     {c.kind === 'group' && <details className="chat-section" open><summary>Group settings</summary>

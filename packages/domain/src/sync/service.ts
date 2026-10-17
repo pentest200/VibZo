@@ -1,3 +1,4 @@
+import { messageAttachments, deleteMessageAttachments } from '../attachments/store.js';
 import { randomUUID } from 'node:crypto';
 import { Long } from 'mongodb';
 import type { ClientSession } from 'mongodb';
@@ -47,9 +48,10 @@ export class SyncService extends MessageService {
     ], { session, maxTimeMS: 3000 }).toArray();
     const receipts = await this.db.collection<Receipt>('conversationReceipts').find({ conversationId: c._id, userId: { $in: activeIds } }, { session }).limit(50).toArray();
     const windows = await this.db.collection<VisibilityRecord>('visibilityIntervals').find({ conversationId: c._id, userId: { $in: activeIds }, endSeq: null }, { session }).limit(50).toArray();
+    const attachments = await messageAttachments(this.db, page, session);
     return conversationSnapshotSchema.parse({ conversationId: c._id, watermark: longToSequence(c.nextEventSeq), capturedAt: new Date().toISOString(), olderBefore: rows.length > 100 ? longToSequence(page.at(-1)!.creationSeq) : null,
       messages: page.map(row => ({ id: row._id, senderId: row.senderId, clientMessageId: row.clientMessageId, creationSequence: longToSequence(row.creationSeq), version: longToSequence(row.version ?? Long.ZERO),
-        text: row.deletedAt ? '' : row.text, replyToId: row.replyToId ?? null, deleted: !!row.deletedAt, createdAt: row.createdAt.toISOString(), reactions: row.deletedAt ? [] : reactions.filter(item => item._id.messageId === row._id).map(item => ({ reaction: item._id.reaction, count: item.count, mine: !!item.mine })) })),
+        attachments: attachments.get(row._id) ?? [], text: row.deletedAt ? '' : row.text, replyToId: row.replyToId ?? null, deleted: !!row.deletedAt, createdAt: row.createdAt.toISOString(), reactions: row.deletedAt ? [] : reactions.filter(item => item._id.messageId === row._id).map(item => ({ reaction: item._id.reaction, count: item.count, mine: !!item.mine })) })),
       receipts: receipts.flatMap(row => { const window = windows.find(window => window.userId === row.userId); return window ? [{ userId: row.userId, delivered: longToSequence(row.delivered), deliveredFrom: longToSequence(row.deliveredFrom), read: longToSequence(row.read), visibleFrom: longToSequence(window.startSeq) }] : []; }) });
   }
   async snapshot(token: string | undefined, id: string, before?: string) { await this.ready(); return this.run(async session => this.window(await this.authorize(token, id, session), before)); }
@@ -133,6 +135,7 @@ export class SyncService extends MessageService {
           const text = input.kind === 'edit' ? input.text.replace(/\r\n?/g, '\n').normalize('NFC') : '';
           if (input.kind === 'edit' && (!text.trim() || Array.from(text).length > this.auth.config.MAX_MESSAGE_CODEPOINTS)) throw new DomainError('INVALID_INPUT', 'Check the edited message length.', 400);
           await messages.updateOne({ _id: message._id }, { $set: { text, version: version.add(Long.ONE), ...(input.kind === 'delete' ? { deletedAt: new Date() } : {}) } }, { session });
+          if (input.kind === 'delete') await deleteMessageAttachments(this.db, message._id, session);
           sequence = await this.event(conversation._id, userId, input.kind === 'edit' ? 'message.edited' : 'message.deleted', { messageId: message._id }, session, [], eventId);
         }
       }

@@ -5,7 +5,7 @@ permissions:
 jobs:
   foundation:
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -29,6 +29,8 @@ jobs:
       - run: pnpm test:integration:sync
       - run: pnpm test:failure:gateway
       - run: pnpm test:failure:outbox
+      - run: pnpm infra:scanner
+      - run: pnpm test:integration:attachments
       - run: pnpm exec playwright install --with-deps chromium
         env:
           PLAYWRIGHT_BROWSERS_PATH: .cache/ms-playwright
@@ -44,6 +46,11 @@ jobs:
       - run: pnpm test:e2e:sync
         env:
           PLAYWRIGHT_BROWSERS_PATH: .cache/ms-playwright
+      - run: pnpm test:e2e:attachments
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: .cache/ms-playwright
+      - run: npm audit --omit=dev --audit-level=high
+        working-directory: infra/processor
       - run: pnpm audit --prod --audit-level high
       - if: failure()
         run: docker --config .cache/docker compose -f infra/compose/compose.yaml logs --tail 100

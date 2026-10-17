@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { attachmentReferenceSchema } from './attachments.js';
 import { idSchema, sequenceSchema } from './primitives.js';
 import { brokerEventSchema } from './messaging.js';
 import { inboxItemSchema } from './conversations.js';
@@ -16,7 +17,7 @@ export const mutationSchema = z.discriminatedUnion('kind', [
 export type MessageMutation = z.infer<typeof mutationSchema>;
 export const mutationResultSchema = z.strictObject({ status: z.literal('accepted'), sequence: sequenceSchema });
 export const syncMessageSchema = z.strictObject({ id: idSchema, senderId: idSchema, clientMessageId: idSchema, creationSequence: sequenceSchema, version: sequenceSchema,
-  text: z.string().max(8000), replyToId: idSchema.nullable(), deleted: z.boolean(), createdAt: z.iso.datetime(),
+  attachments: z.array(attachmentReferenceSchema).max(8).default([]), text: z.string().max(8000), replyToId: idSchema.nullable(), deleted: z.boolean(), createdAt: z.iso.datetime(),
   reactions: z.array(z.strictObject({ reaction: reactionSchema, count: z.number().int().min(0).max(50), mine: z.boolean() })).max(6) });
 export type SyncMessage = z.infer<typeof syncMessageSchema>;
 export const receiptSchema = z.strictObject({ userId: idSchema, delivered: sequenceSchema, deliveredFrom: sequenceSchema, read: sequenceSchema, visibleFrom: sequenceSchema });

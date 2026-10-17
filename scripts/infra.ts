@@ -29,9 +29,10 @@ switch (operation) {
       await run(['exec', '-T', 'garage', '/garage', 'bucket', 'create', 'chat-approved']);
     }
     await run(['exec', '-T', 'garage', '/garage', 'bucket', 'allow', '--read', '--write', '--owner', 'chat-approved', '--key', 'GK00000000000000000000000000000001']);
+    await import('./configure-attachments.js');
     break;
   case 'down': await run(['--profile', 'media', '--profile', 'scanner', 'down']); break;
   case 'media': await run(['--profile', 'media', 'up', '-d', 'livekit']); break;
-  case 'scanner': await run(['--profile', 'scanner', 'up', '-d', '--wait', '--wait-timeout', '900', 'clamav']); break;
+  case 'scanner': await run(['--profile', 'scanner', 'build', 'image-processor']); await run(['--profile', 'scanner', 'up', '-d', '--wait', '--wait-timeout', '900', 'clamav', 'image-processor', 'image-proxy']); break;
   default: throw new Error('Usage: infra.ts config|up|down|media|scanner');
 }

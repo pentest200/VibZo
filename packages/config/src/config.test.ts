@@ -21,6 +21,7 @@ describe('server config safety', () => {
   });
   // Synthetic fixture values; these are not deployable secrets or real endpoints.
   const production = {
+    IMAGE_PROCESSOR_KEY: 'synthetic-image-processor-validation-key', IMAGE_PROCESSOR_URL: 'https://processor.example.test',
     NODE_ENV: 'production', WEB_ORIGIN: 'https://chat.example.test',
     MONGODB_URI: 'mongodb://user:synthetic@db.example.test/chat?tls=true&replicaSet=rs0',
     REDIS_URL: 'rediss://user:synthetic@redis.example.test:6379',

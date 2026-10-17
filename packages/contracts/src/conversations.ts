@@ -1,3 +1,4 @@
+import { attachmentReferenceSchema } from './attachments.js';
 import { z } from 'zod';
 import { idSchema, sequenceSchema } from './primitives.js';
 import { usernameSchema } from './auth.js';
@@ -25,7 +26,7 @@ export const conversationSchema = z.strictObject({ id: idSchema, kind: z.enum(['
   role: z.enum(['owner','admin','member']), members: z.array(memberSchema).max(50), watermark: sequenceSchema, blocked: z.boolean(), otherUserId: idSchema.nullable() });
 export const createdConversationSchema = z.strictObject({ conversationId: idSchema });
 export const historySchema = z.strictObject({ messages: z.array(z.strictObject({ id: idSchema, senderId: idSchema, creationSequence: sequenceSchema,
-  text: z.string().max(8000), replyToId: idSchema.nullable().default(null), deleted: z.boolean(), createdAt: z.iso.datetime() })).max(100), nextCursor: sequenceSchema.nullable(), watermark: sequenceSchema });
+  attachments: z.array(attachmentReferenceSchema).max(8).default([]), text: z.string().max(8000), replyToId: idSchema.nullable().default(null), deleted: z.boolean(), createdAt: z.iso.datetime() })).max(100), nextCursor: sequenceSchema.nullable(), watermark: sequenceSchema });
 export const blocksQuerySchema = z.strictObject({ after: idSchema.optional(), limit: pageLimit });
 export const blocksSchema = z.strictObject({ users: z.array(publicUserSchema).max(100), nextCursor: idSchema.nullable() });
 export type Conversation = z.infer<typeof conversationSchema>;

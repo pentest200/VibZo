@@ -8,8 +8,8 @@ export const messageTextSchema = z.string().refine(text => {
 }, 'Message must contain 1–4000 Unicode code points');
 export const sendMessageSchema = z.strictObject({
   v: z.literal(1), conversationId: idSchema, clientMessageId: idSchema,
-  text: messageTextSchema, replyToId: idSchema.optional(), attachmentIds: z.array(idSchema).max(8).default([])
-});
+  text: z.string().max(8000).refine(text => Array.from(text).length <= 4000), replyToId: idSchema.optional(), attachmentIds: z.array(idSchema).max(8).default([])
+}).refine(input => !!input.text.trim() || input.attachmentIds.length > 0, 'Write a message or choose a file').refine(input => new Set(input.attachmentIds).size === input.attachmentIds.length, 'Choose each file once');
 export type SendMessage = z.infer<typeof sendMessageSchema>;
 
 export const messageCreatedSchema = z.strictObject({
@@ -33,3 +33,5 @@ export * from './auth.js';
 export * from './conversations.js';
 export * from './messaging.js';
 export * from './sync.js';
+
+export * from './attachments.js';

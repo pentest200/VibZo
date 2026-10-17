@@ -1,9 +1,11 @@
 import { loadConfig } from '@chat/config';
-import { BrokerTransport, createMongoClient, runMigrations } from '@chat/domain';
+import { AttachmentStorage, BrokerTransport, createMongoClient, runMigrations } from '@chat/domain';
 export default async function setup() {
   const name = process.env['E2E_DATABASE'];
   if (!name?.startsWith('chat_e2e_auth_')) throw new Error('E2E requires an isolated auth test database');
   const config = loadConfig({ ...process.env, NODE_ENV: 'test', MONGODB_DATABASE: name });
+  const storage = new AttachmentStorage(config);
+  await storage.configureCors();
   const client = createMongoClient(config);
   try { await client.connect(); await runMigrations(client.db(name)); } finally { await client.close(); }
   const deadline = Date.now() + 30000; let ready = false;
@@ -17,9 +19,13 @@ export default async function setup() {
     const cleanup = createMongoClient(config);
     try {
       await cleanup.connect(); await cleanup.db(name).dropDatabase();
+      for (const bucket of [config.S3_QUARANTINE_BUCKET, config.S3_APPROVED_BUCKET]) {
+        let cursor: string | undefined;
+        do { const page = await storage.list(bucket, cursor); for (const object of page.Contents ?? []) if (object.Key) await storage.remove(bucket, object.Key); cursor = page.NextContinuationToken; } while (cursor);
+      }
       // Remove the schema marker before queue cleanup, so the still-draining worker cannot redeclare it.
       const broker = await BrokerTransport.open(config);
       try { await broker.deleteTestTopology(); } finally { await broker.close(); }
-    } finally { await cleanup.close(); }
+    } finally { storage.close(); await cleanup.close(); }
   }
 }

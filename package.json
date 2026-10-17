@@ -33,7 +33,10 @@
     "test:e2e:messaging": "playwright test --config tests/e2e/messaging.config.ts",
     "test:integration:sync": "vitest run --config tests/integration/sync.config.ts",
     "test:e2e:sync": "playwright test --config tests/e2e/sync.config.ts",
-    "test:failure:gateway": "vitest run --config tests/integration/gateway.config.ts"
+    "test:failure:gateway": "vitest run --config tests/integration/gateway.config.ts",
+    "test:integration:attachments": "vitest run --config tests/integration/attachments.config.ts",
+    "test:e2e:attachments": "playwright test --config tests/e2e/attachments.config.ts",
+    "attachments:configure": "tsx scripts/configure-attachments.ts"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

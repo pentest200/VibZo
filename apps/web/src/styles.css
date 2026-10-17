@@ -101,3 +101,11 @@ form { display: grid; gap: 16px; margin: 24px 0; }
 @media (max-width: 680px) { .chat { margin-top: 36px; } .chat-grid { grid-template-columns: 1fr; } .chat-main { order: -1; border-bottom: 1px solid #dce0dc; } .chat-sidebar { border-right: 0; } .chat-heading { align-items: flex-start; } .chat-heading h1 { font-size: 32px; } .chat-heading > a { font-size: 13px; max-width: 90px; } .chat-welcome { padding: 40px 24px; } .history { min-height: 240px; } }
 @media (max-width: 760px) { .account-grid { grid-template-columns: 1fr; } .account-heading { align-items: flex-start; } .account-heading h1 { font-size: 32px; } .panel { padding: 22px; } .auth-card { padding: 24px; } .stage { display: none; } }
 @media (max-width: 600px) { .shell { padding: 24px; } .intro { margin-top: 72px; } h1 { letter-spacing: -2px; } .connection { padding: 22px; } .intro p { font-size: 16px; } .stage { white-space: nowrap; } }
+
+.attachment-picker { margin-block: 1rem; padding: .85rem; border: 1px solid var(--border, #d6dce4); border-radius: .8rem; min-width: 0; }
+.attachment-picker input[type=file] { width: 100%; min-width: 0; font-size: .85rem; }
+.attachment-list { list-style: none; padding: 0; display: grid; gap: .6rem; overflow-wrap: anywhere; }
+.attachment-list li { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
+.attachment-list label { display: flex; align-items: center; gap: .4rem; }
+.attachment-list input[type=checkbox] { width: 1rem; }
+.attachment-picker progress { max-width: 100%; }

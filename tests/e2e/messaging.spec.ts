@@ -12,23 +12,34 @@ test('two real users send, reply, reconcile a lost acceptance response and retai
     await expect(other.locator('.message-list')).toContainText('Hello from a durable send.');
     await other.getByRole('button', { name: 'Reply to Hello from a durable send.' }).click(); await other.getByLabel('Message', { exact: true }).fill('A real reply.');
     await other.getByRole('button', { name: 'Send message', exact: true }).click(); await expect(page.locator('.message-list')).toContainText('A real reply.', { timeout: 15000 });
-    let commandId = '', lost = false;
+    let commandId = '', lost = false, originalAcceptance: unknown;
+    const transmittedIds: string[] = [];
     await page.route('**/api/v1/messages', async route => {
       const body = route.request().postDataJSON() as { clientMessageId: string };
-      if (!lost) { commandId = body.clientMessageId; lost = true; await route.fetch(); await route.abort('failed'); }
-      else { expect(body.clientMessageId).toBe(commandId); await route.continue(); }
+      transmittedIds.push(body.clientMessageId);
+      if (!lost) {
+        commandId = body.clientMessageId; lost = true;
+        const accepted = await route.fetch(); expect(accepted.status()).toBe(200);
+        originalAcceptance = await accepted.json(); await route.abort('failed');
+      } else { expect(body.clientMessageId).toBe(commandId); await route.continue(); }
     });
     await page.getByLabel('Message', { exact: true }).fill('Exactly one stored command after a lost reply.');
-    await page.getByRole('button', { name: 'Send message', exact: true }).click(); await expect(page.locator('.composer')).toContainText('original IDs');
-    await expect(page.locator('.composer')).toContainText('Accepted by the server');
+    // Receipts share the status notice, so assert the retried command's durable result instead.
+    const retryAccepted = page.waitForResponse(response => response.url().endsWith('/api/v1/messages') && response.status() === 200 && response.request().postDataJSON()?.clientMessageId === commandId);
+    await page.getByRole('button', { name: 'Send message', exact: true }).click();
+    expect(await (await retryAccepted).json()).toEqual(originalAcceptance);
+    expect(transmittedIds.length).toBeGreaterThanOrEqual(2);
+    expect(new Set(transmittedIds)).toEqual(new Set([commandId]));
+    await expect(page.getByLabel('Pending commands').filter({ hasText: 'Exactly one stored command after a lost reply.' })).toHaveCount(0);
     await expect(page.locator('.message-list li').filter({ hasText: 'Exactly one stored command after a lost reply.' })).toHaveCount(1);
-    await page.reload(); await expect(page.locator('.message-list li')).toHaveCount(3);
+    // Fresh navigation reauthorizes and recovers history before rendering private messages.
+    await page.reload(); await expect(page.locator('.message-list li')).toHaveCount(3, { timeout: 25000 });
     await expect(page.locator('.message-list')).toContainText('A real reply.');
     await page.screenshot({ path: '.cache/qa/messaging-desktop.png', fullPage: true });
     await page.setViewportSize({ width: 390, height: 844 }); await expect(page.getByLabel('Message', { exact: true })).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({ path: '.cache/qa/messaging-mobile.png', fullPage: true });
-    await other.goto(url); await expect(other.locator('.message-list li')).toHaveCount(3);
+    await other.goto(url); await expect(other.locator('.message-list li')).toHaveCount(3, { timeout: 25000 });
     await expect.poll(async () => (await request.get('http://127.0.0.1:3002/health/ready')).status()).toBe(200);
     await expect.poll(async () => (await (await request.get('http://127.0.0.1:3002/metrics')).text()).includes('chat_outbox_pending 0\n')).toBe(true);
     const metrics = await (await request.get('http://127.0.0.1:3002/metrics')).text();

@@ -17,7 +17,7 @@ export interface InboxCounter { _id: string; schemaVersion: 1; sequence: Long; g
 export interface InboxEvent { _id: string; schemaVersion: 1; userId: string; sequence: Long; conversationId: string | null; kind: 'conversation.changed' | 'blocks.changed'; createdAt: Date }
 export interface ControlEvent { _id: string; schemaVersion: 1; conversationId: string; sequence: Long; actorId: string; kind: string; payload: Record<string,string>; createdAt: Date }
 export interface OutboxRecord { _id: string; schemaVersion: 1; eventId: string; topic: string; status: 'pending' | 'claimed' | 'published'; availableAt: Date; leaseUntil: Date; leaseOwner: string | null; attempts: number; publishedAt: Date | null; createdAt: Date }
-export interface MessageRecord { _id: string; schemaVersion: 1; conversationId: string; senderId: string; clientMessageId: string; originalDigest: string; creationSeq: Long; version?: Long; text: string; replyToId?: string | null; deletedAt: Date | null; createdAt: Date }
+export interface MessageRecord { _id: string; schemaVersion: 1; conversationId: string; senderId: string; clientMessageId: string; originalDigest: string; creationSeq: Long; version?: Long; attachmentIds?: string[]; text: string; replyToId?: string | null; deletedAt: Date | null; createdAt: Date }
 export interface CreateCommand { _id: string; schemaVersion: 1; userId: string; clientCommandId: string; digest: string; conversationId: string; createdAt: Date }
 export const pairId = (a: string, b: string) => [a,b].sort().join(':');
 export const membershipId = (conversationId: string, userId: string) => `${conversationId}:${userId}`;

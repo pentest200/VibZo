@@ -3,6 +3,7 @@ import { test, expect } from '@playwright/test';
 import type { APIRequestContext, Page } from '@playwright/test';
 
 const password = 'Browser-synthetic-password-123';
+const mailpitOrigin = process.env['MAILPIT_URL'] ?? 'http://127.0.0.1:8025';
 async function signIn(page: Page, email: string, secret = password) {
   await page.goto('/login'); await page.getByLabel('Email', {exact:true}).fill(email);
   await page.getByLabel('Password',{exact:true}).fill(secret); await page.getByRole('button',{name:'Sign in',exact:true}).click();
@@ -11,11 +12,11 @@ async function signIn(page: Page, email: string, secret = password) {
 async function emailLink(request: APIRequestContext, recipient: string, purpose: 'verify' | 'reset') {
   let link = '';
   await expect.poll(async () => {
-    const response = await request.get(`http://127.0.0.1:8025/api/v1/search?query=${encodeURIComponent(`to:${recipient}`)}`);
+    const response = await request.get(`${mailpitOrigin}/api/v1/search?query=${encodeURIComponent(`to:${recipient}`)}`);
     const result = await response.json() as { messages: { ID: string; Subject: string }[] };
     for (const message of result.messages) {
       if (!message.Subject.toLowerCase().includes(purpose === 'verify' ? 'verify' : 'reset')) continue;
-      const detail = await request.get(`http://127.0.0.1:8025/api/v1/message/${message.ID}`);
+      const detail = await request.get(`${mailpitOrigin}/api/v1/message/${message.ID}`);
       const body = await detail.json() as { Text: string };
       const match = body.Text.match(new RegExp(`http://localhost:5173/${purpose}#token=[A-Za-z0-9_-]{43}`));
       if (match) { link = match[0]; return true; }

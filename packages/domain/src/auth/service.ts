@@ -7,6 +7,7 @@ import { csrfFor, newToken, PasswordHasher, sameSecret, seal, tokenHash } from '
 import { DomainError, unauthorized, unavailable } from './errors.js';
 import { authSchemaReady } from './migrations.js';
 import type { EmailJobRecord, Principal, SessionRecord, TokenRecord, UserRecord } from './model.js';
+import type { DeviceRecord } from '../safety/model.js';
 import { publicProfile } from './model.js';
 import { AuthRateLimiter } from './rate-limit.js';
 
@@ -113,6 +114,7 @@ export class AuthService {
         const result = await this.sessions().updateOne({ _id: id, userId: principal.user._id }, { $set: { revokedAt: new Date() } }, { session: transaction });
         if (!result.matchedCount) throw new DomainError('FORBIDDEN', 'That session is unavailable.', 403);
       }
+      await this.db.collection<DeviceRecord>('pushSubscriptions').deleteMany({ userId: principal.user._id, ...(target === 'all' ? {} : { sessionId: target === 'current' ? principal.session._id : target }) }, { session: transaction });
       await this.audit(principal.user._id, `session.revoke.${target === 'all' ? 'all' : 'one'}`, principal.user._id, transaction);
       return principal.user._id;
     });
@@ -148,6 +150,7 @@ export class AuthService {
         await this.users().updateOne({ _id: user._id }, { $set: { passwordHash, updatedAt: now }, $inc: { authVersion: 1 } }, { session });
         await this.sessions().updateMany({ userId: user._id, revokedAt: null }, { $set: { revokedAt: now } }, { session });
         await this.tokens().updateMany({ userId: user._id, usedAt: null }, { $set: { usedAt: now } }, { session });
+        await this.db.collection<DeviceRecord>('pushSubscriptions').deleteMany({ userId: user._id }, { session });
       }
       await this.audit(user._id, `auth.${purpose}.consume`, user._id, session);
       return user._id;
@@ -165,6 +168,7 @@ export class AuthService {
       await this.users().updateOne({ _id: locked.user._id }, { $set: { passwordHash, updatedAt: now }, $inc: { authVersion: 1 } }, { session });
       await this.sessions().updateMany({ userId: locked.user._id, revokedAt: null }, { $set: { revokedAt: now } }, { session });
       await this.tokens().updateMany({ userId: locked.user._id, usedAt: null }, { $set: { usedAt: now } }, { session });
+      await this.db.collection<DeviceRecord>('pushSubscriptions').deleteMany({ userId: locked.user._id }, { session });
       await this.audit(locked.user._id, 'auth.password.change', locked.user._id, session); return locked.user._id;
     });
     await this.rates.revocationHint(userId);

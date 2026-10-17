@@ -5,6 +5,7 @@ import { MAX_SEQUENCE } from '@chat/contracts';
 import type { AuthService } from '../auth/service.js';
 import { requireVerified } from '../auth/service.js';
 import type { Principal } from '../auth/model.js';
+import type { UserRecord } from '../auth/model.js';
 import { DomainError, unavailable } from '../auth/errors.js';
 import { transactionOptions } from '../mongo.js';
 import { conversationSchemaReady } from './migrations.js';
@@ -52,6 +53,7 @@ export class ConversationStore {
     if(conversation.kind==='direct'){
       const ids=conversation.directPair!.split(':');const other=ids.find(userId=>userId!==principal.user._id);
       if(!other)throw denied();await this.guardPair(principal.user._id,other,session,mode==='history');
+      if(mode==='write'&&!await this.db.collection<UserRecord>('users').findOneAndUpdate({_id:other,deletionState:'active'},{$inc:{guardVersion:1}},{session}))throw denied();
     }
     return {principal,conversation,membership,session};
   }

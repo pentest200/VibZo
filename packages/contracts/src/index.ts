@@ -35,3 +35,4 @@ export * from './messaging.js';
 export * from './sync.js';
 
 export * from './attachments.js';
+export * from './safety.js';

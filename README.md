@@ -2,7 +2,7 @@
 
 A TypeScript web messaging and calling application being built in verified phases. Read [implementation_plan.md](implementation_plan.md) for the complete architecture, invariants, phase gates and exact resume state.
 
-**Current scope: Phases 00-05 verified locally in the recorded scope.** Real authentication, profiles, contacts/groups/roles/blocks and durable text/replies are implemented. Mongo mutations/events/outbox/inbox/commands commit before acceptance. Live Socket.IO gateways, Redis adapter/fanout and authoritative replay/snapshots repair missed updates. Pending actions persist in IndexedDB across reload and coordinate across tabs; storage denial is disclosed. Edit/delete/reactions, explicit read progress, applied-window delivery, unread counts, bounded history and approximate privacy-aware presence are included. Private attachments now include reserved uploads, real ClamAV checks, isolated image transforms, ready-file sending and authorized short-lived downloads; see the [attachment runbook](docs/runbooks/attachments.md). Calls, provider notifications and safety/retention workflows remain later phases. See the [Phase 05 evidence](docs/phase-05-evidence.md) for executed checks and operational limits. This is not a production-ready product.
+**Current scope: Phases 00-05 verified locally; Phase 06 core workflows implemented with backend and controlled-browser verification. Native positive push/provider delivery is unverified.** Real authentication, profiles, contacts/groups/roles/blocks and durable text/replies are implemented. Mongo mutations/events/outbox/inbox/commands commit before acceptance. Live Socket.IO gateways, Redis adapter/fanout and authoritative replay/snapshots repair missed updates. Pending actions persist in IndexedDB across reload and coordinate across tabs; storage denial is disclosed. Edit/delete/reactions, explicit read progress, applied-window delivery, unread counts, bounded history and approximate privacy-aware presence are included. Private attachments now include reserved uploads, real ClamAV checks, isolated image transforms, ready-file sending and authorized short-lived downloads; see the [attachment runbook](docs/runbooks/attachments.md). Phase 06 now adds opt-in generic push with in-app fallback, protected reports/moderation, configurable content/event retention and resumable account deletion. Its verification scope and remaining gates are tracked separately in [Phase 06 evidence](docs/phase-06-evidence.md); public provider acceptance/display is unverified. Calls remain Phase 07. See the [safety runbook](docs/runbooks/safety.md). See the [Phase 05 evidence](docs/phase-05-evidence.md) for executed checks and operational limits. This is not a production-ready product.
 
 ## Local setup
 
@@ -47,12 +47,14 @@ pnpm test:integration:sync
 pnpm test:failure:gateway
 pnpm infra:scanner
 pnpm test:integration:attachments
+pnpm test:integration:safety
 pnpm exec playwright install chromium
 pnpm test:e2e:auth
 pnpm test:e2e:conversations
 pnpm test:e2e:messaging
 pnpm test:e2e:sync
 pnpm test:e2e:attachments
+pnpm test:e2e:safety
 pnpm infra:media
 pnpm infra:scanner
 pnpm infra:down
@@ -70,8 +72,8 @@ Development fixtures: provide `SEED_PASSWORD` in the process environment and run
 
 ## Resume
 
-Use the latest progress at the bottom of `implementation_plan.md`: Phases 00-05 are verified locally in their stated scope; the exact Phase 06 tasks are the resume point. Four phases (06-09) remain. Do not reinitialize the workspace or overwrite the brief. Evidence: [Phase 00](docs/phase-00-evidence.md), [Phase 01](docs/phase-01-evidence.md), [Phase 02](docs/phase-02-evidence.md), [Phase 03](docs/phase-03-evidence.md), [Phase 04](docs/phase-04-evidence.md), [Phase 05](docs/phase-05-evidence.md).
+Use the latest progress at the bottom of `implementation_plan.md`: Phases 00-05 are verified locally; Phase 06 core implementation and tests are recorded, with native positive push/provider delivery still unverified. The exact remaining Phase 06 verification tasks precede Phase 07 calling. Do not reinitialize the workspace or overwrite the brief. Evidence: [Phase 00](docs/phase-00-evidence.md), [Phase 01](docs/phase-01-evidence.md), [Phase 02](docs/phase-02-evidence.md), [Phase 03](docs/phase-03-evidence.md), [Phase 04](docs/phase-04-evidence.md), [Phase 05](docs/phase-05-evidence.md), [Phase 06](docs/phase-06-evidence.md).
 
-Run broker failure tests sequentially with other broker/browser checks: they briefly stop and restart local RabbitMQ. A migration to 003 requires quiescing pre-003 writers; no mixed-release rolling upgrade is claimed. Pending fanout and notification intents are bounded and await their owning later phases.
+Run broker failure tests sequentially with other broker/browser checks: they briefly stop and restart local RabbitMQ. A migration to 003 requires quiescing pre-003 writers; no mixed-release rolling upgrade is claimed. Fanout and notification intents have separate bounded workers; push defaults off and unread discovery remains available.
 
 The synchronization browser suite also reserves loopback 16380/16381 for its test-only real-Redis publication fault proxy. Its reduced browser buffer budget is eight; the normal public build-time `VITE_LIVE_BUFFER_EVENTS` budget defaults to 256 (validated 1..256). Export this non-secret option before web dev/build. Offline pending actions survive refresh, but a fresh private view still requires current server authorization; this is not an offline-installable app.

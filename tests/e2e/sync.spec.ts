@@ -102,11 +102,14 @@ test('older history replaces the bounded window and an expired replay cursor res
     await page.getByRole('button', { name: 'Earlier messages', exact: true }).click(); await expect(page.locator('.message-list li')).toHaveCount(3);
     await page.getByRole('button', { name: 'Latest messages', exact: true }).click(); await expect(page.locator('.message-list li')).toHaveCount(100);
     let expired = 0; page.on('response', response => { if (response.url().includes('/events?after=') && response.status() === 409) expired++; });
+    // An already-running snapshot can legitimately skip expired replay by recovering first.
+    // Hold that recovery path until the engine observes a real server CURSOR_EXPIRED.
+    await page.route(`**/sync/conversations/${id}/snapshot`, route => expired ? route.continue() : route.abort('failed'));
     await page.context().setOffline(true);
     const sent = await service.send(token, { v: 1, conversationId: id, clientMessageId: randomUUID(), text: 'After the replay retention floor', attachmentIds: [] });
     await client.db(config.MONGODB_DATABASE).collection<ReplayFloor>('replayFloors').insertOne({ _id: id, schemaVersion: 1, floor: Long.fromString(sent.message.creationSequence), createdAt: new Date() });
-    await page.context().setOffline(false); await expect(page.locator('.message-list')).toContainText('After the replay retention floor', { timeout: 25000 });
-    expect(expired).toBeGreaterThan(0); await expect(page.locator('.message-list li')).toHaveCount(100);
+    await page.context().setOffline(false); await expect.poll(() => expired, { timeout: 25000 }).toBeGreaterThan(0);
+    await expect(page.locator('.message-list')).toContainText('After the replay retention floor', { timeout: 25000 }); await expect(page.locator('.message-list li')).toHaveCount(100);
   } finally { await page.context().setOffline(false); await auth.close(); await client.close(); }
 });
 

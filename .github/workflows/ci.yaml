@@ -31,6 +31,7 @@ jobs:
       - run: pnpm test:failure:outbox
       - run: pnpm infra:scanner
       - run: pnpm test:integration:attachments
+      - run: pnpm test:integration:safety
       - run: pnpm exec playwright install --with-deps chromium
         env:
           PLAYWRIGHT_BROWSERS_PATH: .cache/ms-playwright
@@ -47,6 +48,9 @@ jobs:
         env:
           PLAYWRIGHT_BROWSERS_PATH: .cache/ms-playwright
       - run: pnpm test:e2e:attachments
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: .cache/ms-playwright
+      - run: pnpm test:e2e:safety
         env:
           PLAYWRIGHT_BROWSERS_PATH: .cache/ms-playwright
       - run: npm audit --omit=dev --audit-level=high

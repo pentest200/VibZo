@@ -3,7 +3,7 @@ export interface UserRecord {
   _id: string; schemaVersion: 1; emailCanonical: string; usernameCanonical: string;
   displayName: string; passwordHash: string; verifiedAt: Date | null; privacy: Profile['privacy'];
   avatarId: string | null; role: 'user' | 'moderator'; authVersion: number; guardVersion: number;
-  deletionState: 'active'; createdAt: Date; updatedAt: Date;
+  deletionState: 'active' | 'deleting' | 'deleted'; createdAt: Date; updatedAt: Date;
 }
 export interface SessionRecord {
   _id: string; schemaVersion: 1; tokenHash: string; csrfHash: string; userId: string; authVersion: number;

@@ -3,7 +3,11 @@ import { currentSession } from './api.js';
 import { clearPrivateStore } from './sync-db.js';
 export const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 0 } } });
 export const accountKey = ['account-session'];
-export function useAccount() { return useQuery({ queryKey: accountKey, queryFn: currentSession, refetchInterval: 30000 }); }
+export function useAccount() { return useQuery({ queryKey: accountKey, queryFn: async () => {
+  const session = await currentSession();
+  if (!session) { await clearPrivateStore(); queryClient.removeQueries({ predicate: query => query.queryKey[0] !== 'account-session' }); }
+  return session;
+}, refetchInterval: 30000 }); }
 function resetAccountCache() {
   void clearPrivateStore();
   queryClient.setQueryData(accountKey, null);

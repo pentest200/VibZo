@@ -1,0 +1,55 @@
+# Phase 06 evidence — 2026-10-17
+
+Status: implemented; backend and controlled-browser scope verified locally. Native positive push enrollment/provider delivery remain environment-blocked/unverified, so the entire phase is not marked verified. Do not infer public push delivery, production readiness or later-phase completion from this file. Started from clean Git `59c8390`; Phase 05 and its CI repair were already committed. This phase remains uncommitted. Original implementation brief and migrations 001–005 are unchanged.
+
+## Implemented scope
+
+- Additive 006 validators/indexes, settings/consent/subscription/report/moderation/deletion contracts and protected API routes. Same cookie, origin, CSRF, verified-user/moderator, membership, visibility and pair guard policies as messaging. No public moderator promotion route or arbitrary message-body access.
+- Session-bound encrypted device subscriptions, closed HTTPS provider allowlist, quota/expiry, logout/reset/password revocation cleanup. Explicit user opt-in and service worker, device disable, account pause, unsupported/denied/provider-unavailable fallback to real unread conversations. Generic payload/notice only; authoritative inbox on click.
+- Existing independent notification queue now expands transactionally to deterministic per-device jobs, bounded admission, current authority checks on expansion and every attempt, unique server-time leases, bounded retry, expired/gone/permanent-failure handling, inspectable outcomes. Provider acceptance is recorded after sending; crash ambiguity can duplicate a generic notice. Never claim exactly-once display/delivery.
+- Visible reference/category reports with command binding and daily admission; reference-only protected moderator queue with audited reads and idempotent dismiss/removal. Removal scrubs body/reactions, stages files, invalidates captured snapshots and commits deletion event/outbox.
+- Password-confirmed account deletion immediately anonymizes identity, revokes all sessions/tokens/push/email credentials and clears the cookie; durable resumable batches remove authored content, projections, receipts/reactions, memberships and tracked live files. Both direct/group authored bodies are scrubbed; other members retain their own messages. Group ownership transfers deterministically or the group is archived. A deleting file owner cannot get new download grants, including in groups, before cleanup runs. Previously issued grants keep their documented bounded lifetime.
+- Configurable content retention (unlimited default), contiguous conversation/inbox replay floors and snapshot recovery, conservative physical event/projection/effect pruning after the full replay/publication horizon. No TTL on unpublished work or attachment cleanup metadata. Commands/tombstones and restricted pseudonymous audit/report references remain indefinitely by explicit policy.
+- Inspection/retry CLI, ignored exclusive-create VAPID configuration helper, example configuration, CI gates and detailed [runbook](runbooks/safety.md).
+
+## Executed checks
+
+The final local safety integration run passed **19 tests** on real Mongo replica/Redis/Rabbit/private S3/ClamAV. Provider sends in these tests are deterministic, explicitly injected fixtures; no public push service was contacted. Test dates/leases are advanced only in isolated synthetic databases, never the host clock. Final tests cover:
+
+1. Idempotent additive migration and strict stored validation, preserving accounts.
+2. Subscription encryption, verified/session ownership, SSRF/cross-account rejection and device deletion.
+3. Transactional duplicate effect/intake dedup and one deterministic event/device delivery record; generic payload boundary.
+4. Renewal after the same user's old session expires; active-session takeover denied.
+5. Rechecks for consent pause, session revoke, pair block and deleted message.
+6. Ambiguous provider retry, crashed/expired lease reclaim, gone endpoint removal.
+7. Exhausted lease and expired job outcomes without sends.
+8. Group prejoin visibility/report denial and removal before delivery.
+9. Global push-job admission rollback with later same-intent recovery and no partial/duplicate jobs.
+10. Report command binding, per-user rolling admission, invented/foreign/removed-member negatives.
+11. Ordinary/unverified moderator privilege denial, reference-only audited review, idempotent removal, old snapshot invalidation.
+12. Actual HTTP origin/CSRF/strict input/vertical privilege enforcement.
+13. Wrong deletion password, immediate all-session revocation, direct send denial, identity anonymization, expired deletion lease recovery, group-owner transfer and preservation of other authors.
+14. Actual private group-file upload/scan/send, immediate denial of new owner-deleted download grants, already-issued bearer window, real storage-connection failure, retained quota, successful physical cleanup and eventual account completion.
+15. Default unlimited content vs configured deletion/event/outbox retention behavior.
+16. Expired conversation cursor snapshot recovery, physical pruning of aged published references, preservation of unpublished outbox/canonical event and expired consumer replay rejection.
+17. Inbox hint expiry/floor and authoritative snapshot discovery.
+18. Owner-only group archival and actual operator-CLI recovery after exhausted failures.
+19. Actual child worker exit after persisting a deletion claim, followed by fenced lease reclaim and eventual body cleanup.
+
+Passed affected regression suites: auth integration 14, conversations 16, sync 13, attachments 14, messaging 8, outbox failure 12, gateway failure 7; unit 39. Build, full-source typecheck and lint/import boundaries passed. Production workspace dependency audit reported no known vulnerabilities. HTTP 3 and foundation integration 6 also passed; all-profile Compose configuration, additive development migration (markers 001-006), preservation of both ordinary fixture accounts, inspection CLI, frozen offline install, standalone processor audit (zero vulnerabilities), and a browser-bundle scan for server secret configuration names passed. Notification settings desktop/mobile captures were visually inspected; 390px page width had no horizontal overflow.
+
+Earlier failed attempts are not passing evidence: initial typecheck/build found stale generated package declarations, a Mongo collection-info union, inline replacement typing and Web Push optional-expiry typing; corrected and rebuilt. Initial safety integration had 9 passed/3 failed due to fixture code using `sent.messageId` instead of `sent.message.messageId`; corrected, then 13, 17 and finally 19 tests passed. Initial browser discovery failed on an extra assertion parenthesis before running any tests; corrected. An initial frozen offline install could not acquire pnpm's Windows operation lock under restricted execution; reran with the required permission and passed. Positive native enrollment attempts continued to report Notification.permission=denied even after a scoped context grant on this host. The positive UI test now explicitly fixtures both permission and push-service enrollment, while using a real service worker and real authenticated API persistence/disable. Native opt-in remains unverified; real native denial is asserted separately. The sync regression exposed an existing test race: a valid in-flight snapshot could recover before an expired replay request, making an assertion of an observed 409 nondeterministic. The test now aborts snapshot recovery until a real server CURSOR_EXPIRED is observed, then checks the actual recovered history. This changes test scheduling, not production recovery. No test retries or relaxed application security limits were introduced. Vite reset/aborted WebSocket proxy warnings during navigation are not counted as acceptance failures.
+
+## Boundaries
+
+Native positive enrollment and FCM/Mozilla/Apple acceptance/display, background push across browser restarts, Safari/iOS and notification click behavior under real provider delivery remain **unverified**. Local subscription UI fixtures are labeled; they must never be described as actual public push delivery. Backend provider timeout/duplicate handling tests do not certify browser delivery. Push stays disabled in default development/production configuration until explicitly configured and users opt in.
+
+This is live-store cleanup with documented pseudonymous records, not proof of universal erasure/anonymity. Other members' content/group names can mention the deleted user; downloaded/offline copies, provider-retained notifications/mail and backup media cannot be remotely recalled. Account completion covers tracked live files and credentials/projections; independent orphan inventory reconciliation continues after completion. Finite tombstone compaction, backup expiry/restore deletion reapplication, production IAM/TLS/admin provisioning, notification/deletion alerting/capacity, mixed-release upgrades and remote CI remain 08/09 operational gates. Actual worker-process exit after persisting a deletion claim, owner-only group archival and the operator retry CLI are now exercised; not every concurrent-deletion or browser UI control branch has independent exhaustive coverage. Calling remains Phase 07 and has not started.
+
+## Final verification / resume
+
+Final browser results: safety **4**, auth **2**, conversations **1**, sync **6**, attachments **1**, messaging **1** passed. **166 distinct tests passed** across the scoped suites (151 unit/HTTP/integration/failure and 15 browser tests). Positive permission/enrollment in the safety test is explicitly simulated; actual native denial, service-worker registration, API persistence/disable and all private-state/report/deletion paths are real. No public push-provider send occurred. Browser runs use SMTP_PORT=1026 and MAILPIT_URL=http://127.0.0.1:8026 with a disposable receiver from the same pinned Mailpit image, preserving the original mail store. Final source/tool typecheck and ESLint/import boundaries passed after test corrections. No production deployment, staging, commit, push or GitHub Actions rerun.
+
+Resume from the final Phase 06 section of `implementation_plan.md`: preserve uncommitted work; close native positive permission/provider delivery using an authorized compatible environment or a local standards-provider harness, without relabeling fixtures as native success. Other production/backup/capacity limits remain 08/09. Phase 07 calling has not started. The original brief/applied 001-005 migrations are byte-equivalent after line-ending normalization. Development schema is 001-006, both original ordinary fixture accounts remain active, and original dependency volumes are preserved.
+
+Cleanup complete: removed only the disposable Mailpit container 18a6cac2b9fa. All eight original dependency containers remain healthy; original mail and service volumes are preserved. Browser-owned 3000/3001/3002/5173 listeners are stopped. Git changes remain unstaged/uncommitted.

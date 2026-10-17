@@ -36,7 +36,11 @@
     "test:failure:gateway": "vitest run --config tests/integration/gateway.config.ts",
     "test:integration:attachments": "vitest run --config tests/integration/attachments.config.ts",
     "test:e2e:attachments": "playwright test --config tests/e2e/attachments.config.ts",
-    "attachments:configure": "tsx scripts/configure-attachments.ts"
+    "attachments:configure": "tsx scripts/configure-attachments.ts",
+    "test:integration:safety": "vitest run --config tests/integration/safety.config.ts",
+    "test:e2e:safety": "playwright test --config tests/e2e/safety.config.ts",
+    "ops:safety": "tsx scripts/safety-jobs.ts",
+    "push:configure": "tsx scripts/configure-push.ts"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

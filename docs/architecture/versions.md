@@ -25,3 +25,5 @@ GitHub CI actions pin exact official tag commits fetched from GitHub API: checko
 
 
 Phase 01 verified pins: argon2 0.45.1, @fastify/cookie 11.1.3 (Fastify 5.12.5 compatibility retained), nodemailer 10.1.0, @types/nodemailer 8.0.2, @playwright/test 1.64.0. Matching Chromium build 1248 / Chrome for Testing 156.0.8078.4 ran locally. Explicit Argon2 native allowlist added. Benchmark, official references, integration/browser evidence and remaining limits: [Phase 01](../phase-01-evidence.md).
+
+Phase 06 verified registry pins (2026-10-17): web-push 3.6.7 (MPL-2.0), @types/web-push 3.6.4. Native browser Push API/service worker; no frontend secret or additional service provider dependency. See [safety runbook](../runbooks/safety.md) for official references and provider verification limits.

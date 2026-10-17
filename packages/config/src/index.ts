@@ -20,6 +20,11 @@ const schema = z.object({
   SCANNER_TIMEOUT_MS: integer(30000, 60000), IMAGE_PROCESSOR_URL: z.url().default('http://127.0.0.1:3003'),
   IMAGE_PROCESSOR_KEY: z.string().min(32).default('local-only-image-processor-key-change-before-production'),
   MAX_PENDING_ATTACHMENT_JOBS: integer(10000, 100000),
+  PUSH_ENABLED: boolean.default(false), VAPID_PUBLIC_KEY: z.string().default(''), VAPID_PRIVATE_KEY: z.string().default(''),
+  VAPID_SUBJECT: z.string().default('mailto:accounts@commonroom.example.test'),
+  PUSH_ENCRYPTION_KEY: z.string().min(32).default('local-only-push-encryption-change-before-production'),
+  MAX_PUSH_SUBSCRIPTIONS: integer(10, 10), MAX_PENDING_PUSH_JOBS: integer(100000, 1000000),
+  MAX_REPORTS_PER_DAY: integer(20, 100),
   SMTP_HOST: z.string().default('127.0.0.1'), SMTP_PORT: integer(1025, 65535),
   SMTP_SECURE: boolean.default(false), SMTP_USER: z.string().optional(), SMTP_PASSWORD: z.string().optional(),
   EMAIL_FROM: z.email().default('accounts@commonroom.example.test'),
@@ -59,6 +64,8 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
   const result = schema.safeParse(env);
   if (!result.success) throw new Error(`Invalid configuration fields: ${result.error.issues.map(issue => issue.path.join('.')).join(', ')}`);
   const config = result.data;
+  if (config.PUSH_ENABLED && (!/^[A-Za-z0-9_-]{87}$/.test(config.VAPID_PUBLIC_KEY) || !/^[A-Za-z0-9_-]{43}$/.test(config.VAPID_PRIVATE_KEY) || !/^mailto:[^\s@]+@[^\s@]+$/.test(config.VAPID_SUBJECT))) throw new Error('Push requires explicit valid VAPID keys and contact');
+  if (config.NODE_ENV === 'production' && config.PUSH_ENABLED && (!env['PUSH_ENCRYPTION_KEY'] || config.PUSH_ENCRYPTION_KEY.startsWith('local-only'))) throw new Error('Production push requires an explicit encryption key');
   if (new URL(config.WEB_ORIGIN).origin !== config.WEB_ORIGIN) throw new Error('WEB_ORIGIN must be an exact origin');
   if (config.EFFECT_RETENTION_DAYS < config.COMPLETED_OUTBOX_RETENTION_DAYS) throw new Error('Effect retention must cover completed outbox retention');
   if (config.NODE_ENV === 'production') {

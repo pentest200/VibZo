@@ -3,6 +3,7 @@ import type { ClientSession } from 'mongodb';
 import { reserveAttachmentSchema } from '@chat/contracts';
 import { ConversationService } from '../conversations/service.js';
 import type { AuthService } from '../auth/service.js';
+import type { UserRecord } from '../auth/model.js';
 import { DomainError, unavailable } from '../auth/errors.js';
 import { tokenHash } from '../auth/crypto.js';
 import { conflict, denied } from '../conversations/store.js';
@@ -97,6 +98,7 @@ export class AttachmentService extends ConversationService {
     await this.ready(); const row = await this.run(async session => {
       const row = await this.files().findOne({ _id: id, state: 'ready' }, { session }); if (!row) throw denied();
       const ctx = await this.authorize(token, row.conversationId, session, 'write');
+      if (!await this.db.collection<UserRecord>('users').findOneAndUpdate({ _id: row.ownerId, deletionState: 'active' }, { $inc: { guardVersion: 1 } }, { session })) throw denied();
       if (!row.messageId) { if (ctx.principal.user._id !== row.ownerId || row.expiresAt <= new Date()) throw denied(); }
       else {
         const message = await this.db.collection<MessageRecord>('messages').findOne({ _id: row.messageId, conversationId: row.conversationId, deletedAt: null, attachmentIds: id }, { session });

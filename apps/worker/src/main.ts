@@ -1,10 +1,16 @@
 import { setTimeout as delay } from 'node:timers/promises';
 import { loadConfig } from '@chat/config';
+import { recoveryReady } from '@chat/domain';
 import { startFoundationProcess, createLogger, startTelemetry, DrainTracker, traced, operationalMetrics, recordOperational } from '@chat/observability';
 import { createMongoClient, CallService, CallWorker, callMetrics, AttachmentService, AttachmentWorker, FanoutWorker, AuthEmailWorker, AuthService, ConversationService, SafetyService, SafetyMaintenance, NotificationWorker, authSchemaReady, messagingSchemaReady, BrokerTransport, OutboxRelay, EventConsumer, DeliveryStats, deliveryMetrics, attachmentMetrics, inspectMongo, mongoPoolMetrics } from '@chat/domain';
 const config = loadConfig(), client = createMongoClient(config), db = client.db(config.MONGODB_DATABASE);
 const telemetry = startTelemetry('worker', config), work = new DrainTracker();
-const job = <T>(name: string, run: () => Promise<T>) => stopped ? Promise.resolve(undefined) : work.run(() => traced(name, {}, run).catch(error => { recordOperational('worker_failure'); throw error; }));
+const job = async <T>(name: string, run: () => Promise<T>) => {
+  if (stopped) return undefined;
+  const available = await recoveryReady(db);
+  if (stopped || !available) return undefined;
+  return work.run(() => traced(name, {}, run).catch(error => { recordOperational('worker_failure'); throw error; }));
+};
 const email = new AuthEmailWorker(db, config), logger = createLogger('worker', config.LOG_LEVEL);
 const conversations = new ConversationService(new AuthService(config, client, db)), stats = new DeliveryStats();
 let stopped = false, ready = false, drainStartedAt = 0, broker: BrokerTransport | undefined, consumers: EventConsumer[] = [];
@@ -65,7 +71,7 @@ async function durableDelivery() {
   let failures = 0;
   while (!stopped) {
     try {
-      if (await messagingSchemaReady(db)) {
+      if (await recoveryReady(db) && await messagingSchemaReady(db)) {
         if (!broker || broker.failed) {
           for (const consumer of consumers) await consumer.stop();
           await broker?.close(); broker = await BrokerTransport.open(config);

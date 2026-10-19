@@ -35,6 +35,7 @@ jobs:
       - run: pnpm infra:media
       - run: pnpm test:integration:calls
       - run: pnpm test:integration:operations
+      - run: pnpm test:restore
       - name: Prepare pinned optional telemetry tools
         run: |
           docker --config .cache/docker compose -f infra/compose/compose.yaml --profile telemetry build telemetry-relay

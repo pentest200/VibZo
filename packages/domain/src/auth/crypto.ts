@@ -35,7 +35,7 @@ export class PasswordHasher {
       timeCost: this.config.ARGON_TIME_COST, parallelism: this.config.ARGON_PARALLELISM, hashLength: 32 }));
   }
   async verify(hash: string | undefined, password: string): Promise<boolean> {
-    const matches = await this.bounded(() => argon2.verify(hash ?? this.dummyHash, password));
+    const matches = await this.bounded(() => argon2.verify(hash || this.dummyHash, password));
     return !!hash && matches;
   }
 }

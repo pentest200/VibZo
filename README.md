@@ -6,7 +6,7 @@ A TypeScript web messaging and calling application being built in verified phase
 
 Phase 07 direct/group audio/video, screen sharing, removal/rejoin and native camera-denial flows pass local Chromium checks with generated test media. Forced TURN media currently fails and remains an open acceptance gate; authenticated relay allocation alone passes. Calling is disabled by default. See the [calling runbook](docs/runbooks/calls.md) for setup and the exact verification boundary.
 
-Phase 08 operations is in progress: bounded OpenTelemetry tracing, durable/broker correlation, HTTP/Mongo pool and operational metrics, tracked API/gateway/worker drains, media maintenance, and an optional private collector/Prometheus/Alertmanager profile with dependency/fault checks. See the [operations runbook](docs/runbooks/operations.md) and [Phase 08 evidence](docs/phase-08-evidence.md) for executed scope. Backup/restore and overlapping-release drills remain outstanding; the whole phase is not verified.
+Phase 08 operations is in progress: bounded tracing/metrics, tracked process drains, private telemetry/dependency alerts, and local encrypted quiescent backup/restore with current-policy sanitization. See [operations](docs/runbooks/operations.md), [recovery instructions](docs/runbooks/recovery.md) and [Phase 08 evidence](docs/phase-08-evidence.md) for executed scope. Actual overlapping-release and interrupted media/lease drills remain outstanding; the whole phase is not verified.
 
 ## Local setup
 
@@ -64,6 +64,7 @@ pnpm test:integration:calls
 pnpm test:e2e:calls
 pnpm test:e2e:calls:relay
 pnpm test:integration:operations
+pnpm test:restore
 pnpm infra:telemetry
 pnpm test:failure:dependencies
 pnpm infra:down
@@ -72,6 +73,8 @@ pnpm infra:down
 `infra:up` initializes a Mongo replica set, starts baseline dependencies, creates private Garage quarantine/approved buckets and grants only the development storage identity. Repeated start must preserve volumes. `infra:down` does not remove volumes. The scanner profile starts real ClamAV, a restricted image decoder and its fixed-route proxy; it is required for attachment processing. Media remains optional; enable it on API and worker using the [calling runbook](docs/runbooks/calls.md). Network gates remain scoped to their recorded evidence. Standard tests require built shared packages; `build` comes first on a fresh checkout. Real integration tests fail on missing services; no in-memory Mongo substitute or silent skip.
 
 Optional telemetry: `pnpm infra:telemetry` starts pinned local tools; run `pnpm ops:telemetry` in another terminal for bounded loopback snapshots. Prometheus/Alertmanager/OTLP bind 127.0.0.1:9090/9093/4318. No external alert provider is configured. Enable tracing separately on each application role; defaults remain off. The profile budgets 1 GiB container memory and additional bounded tmpfs/host overhead; it is not a measured resource minimum. [Operations instructions](docs/runbooks/operations.md) cover freshness, privacy, targets, dependency policy and stopping just these tools.
+
+Local recovery: `pnpm ops:recovery` provides encrypted backup, separate current-policy capture and restore into a fresh fenced namespace. Supply a runtime-only independent key, stop all source writers, and follow the [recovery runbook](docs/runbooks/recovery.md). This is a local consistent-copy drill with explicit limits; it does not provide live PITR, regional recovery, zero backup RPO or automatic source cutover. Restored users require fresh password recovery; old credentials/provider jobs are suppressed before readiness.
 
 CI includes frozen installation/build/typecheck/lint/unit/HTTP, Compose/service/transaction checks, migration/auth/conversation/messaging integration, outbox/gateway failure tests, Chromium auth/conversation/messaging/synchronization/attachment tests, real scanner/image processing and backend calling/drain checks, pinned telemetry preparation/dependency fault alerts, and workspace/processor high-severity production dependency audits. No remote CI run is claimed from local execution. Disclosed capacity benchmarks and remaining feature/browser gates remain planned.
 

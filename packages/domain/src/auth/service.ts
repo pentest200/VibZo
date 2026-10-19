@@ -10,6 +10,7 @@ import type { EmailJobRecord, Principal, SessionRecord, TokenRecord, UserRecord 
 import type { DeviceRecord } from '../safety/model.js';
 import { publicProfile } from './model.js';
 import { AuthRateLimiter } from './rate-limit.js';
+import { assertRecoveryReady } from '../operations/recovery.js';
 
 export const GENERIC_AUTH_MESSAGE = 'If these details are eligible, an email will arrive with the next steps.';
 export class AuthService {
@@ -22,17 +23,19 @@ export class AuthService {
     await this.passwords.initialize();
     try { await this.rates.connect(); } catch { /* auth mutations unavailable until process reconnect/restart */ }
   }
-  async assertSchema(): Promise<void> { if (!await authSchemaReady(this.db)) throw unavailable(); }
+  async assertSchema(): Promise<void> { await assertRecoveryReady(this.db); if (!await authSchemaReady(this.db)) throw unavailable(); }
   async close(): Promise<void> { await this.rates.close(); }
   private users() { return this.db.collection<UserRecord>('users'); }
   private sessions() { return this.db.collection<SessionRecord>('sessions'); }
   private tokens() { return this.db.collection<TokenRecord>('authTokens'); }
   private async transaction<T>(operation: (session: ClientSession) => Promise<T>): Promise<T> {
+    await assertRecoveryReady(this.db);
     const session = this.client.startSession();
     try { return await session.withTransaction(() => operation(session), { ...transactionOptions, timeoutMS: 10000 }); }
     finally { await session.endSession(); }
   }
   async authenticate(rawToken: string | undefined, transaction?: ClientSession): Promise<Principal> {
+    await assertRecoveryReady(this.db);
     if (!rawToken || !/^[A-Za-z0-9_-]{43}$/.test(rawToken)) throw unauthorized();
     const active = { tokenHash: tokenHash(rawToken), revokedAt: null, expiresAt: { $gt: new Date() } };
     const candidate = await this.sessions().findOne(active, transaction ? { session: transaction } : {});
@@ -78,6 +81,7 @@ export class AuthService {
     } catch (error) { if ((error as { code?: number }).code !== 11000) throw error; }
   }
   async login(input: LoginInput, previousToken?: string): Promise<{ token: string; session: AuthSession }> {
+    await assertRecoveryReady(this.db);
     const candidate = await this.users().findOne({ emailCanonical: input.email, deletionState: 'active' });
     if (!await this.passwords.verify(candidate?.passwordHash, input.password) || !candidate) throw new DomainError('UNAUTHENTICATED', 'Email or password is incorrect.', 401);
     const token = newToken(); const csrfToken = csrfFor(token, this.config.SESSION_SECRET); const id = randomUUID(); const now = new Date();

@@ -9,6 +9,7 @@ import { telemetryDirectory } from '../../scripts/telemetry-runtime.js';
 import { waitFor } from './messaging-fixture.js';
 const execute = promisify(execFile);
 interface AlertRead { counts: Record<string, number>; history: { status: string; labels: Record<string, string>; receivedAt: number }[] }
+export type DockerPortBindings = Record<string, { HostIp: string; HostPort: string }[] | null>;
 export async function reservePort() {
   const server = createServer(); await new Promise<void>(done => server.listen(0, '127.0.0.1', done));
   const address = server.address(); if (!address || typeof address === 'string') throw new Error('Test port missing');
@@ -46,7 +47,7 @@ export async function telemetryFixture() {
     await waitFor(async () => { try { return (await fetch(endpoint + '/-/ready')).ok; } catch { return false; } }, 20000);
   } catch (error) { const logs = await compose(['logs', '--tail', '20', 'prometheus', 'collector', 'alertmanager']).catch(() => 'Telemetry startup logs unavailable'); await writeFile(resolve(directory, 'startup.log'), logs); await close(); throw new Error(`Telemetry readiness failed; inspect ${directory}/startup.log`, { cause: error }); }
   return { directory, compose, ids, endpoint, otlp, close,
-    async portBindings(role: string) { if (!ids[role]) throw new Error('Unknown test service'); return JSON.parse((await execute('docker', ['--config', '.cache/docker', 'inspect', '--format', '{{json .NetworkSettings.Ports}}', ids[role]!], { windowsHide: true, timeout: 10000 })).stdout) as Record<string, { HostIp: string; HostPort: string }[]>; },
+    async portBindings(role: string) { if (!ids[role]) throw new Error('Unknown test service'); return JSON.parse((await execute('docker', ['--config', '.cache/docker', 'inspect', '--format', '{{json .NetworkSettings.Ports}}', ids[role]!], { windowsHide: true, timeout: 10000 })).stdout) as DockerPortBindings; },
     async query(expression: string) { const response = await fetch(endpoint + '/api/v1/query?query=' + encodeURIComponent(expression), { signal: AbortSignal.timeout(3000) }); const data = await response.json() as { status: string; data: { result: { metric: Record<string, string>; value: [number, string] }[] } }; if (data.status !== 'success') throw new Error('Prometheus query failed'); return data.data.result; },
     alerts() {
       // Concurrent assertions share one bounded inspection process, respecting the relay PID cap.

@@ -45,3 +45,4 @@ export { mediaIdentity } from './calls/model.js';
 export { callSchemaReady } from './calls/migrations.js';
 
 export { OperationsMonitor, dependencies, boundedText, protocolProbe, aggregateMediaMetrics } from './operations/monitor.js';
+export { recoveryReady, assertRecoveryReady } from './operations/recovery.js';

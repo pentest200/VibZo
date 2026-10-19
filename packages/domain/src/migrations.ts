@@ -8,8 +8,10 @@ import { migrateSync } from './sync/migrations.js';
 import { migrateSafety } from './safety/migrations.js';
 import { migrateCalls } from './calls/migrations.js';
 import { migrateOperations } from './operations/migrations.js';
+import { assertRecoveryReady } from './operations/recovery.js';
 interface MigrationLease { _id:string;owner:string|null;leaseUntil:Date;epoch:number }
 export async function runMigrations(db:Db):Promise<void> {
+  await assertRecoveryReady(db);
   const owner=randomUUID();const locks=db.collection<MigrationLease>('migrationLocks');
   await locks.updateOne({_id:'schema'},{$setOnInsert:{owner:null,leaseUntil:new Date(0),epoch:0}},{upsert:true});
   const lease=await locks.findOneAndUpdate({_id:'schema',$expr:{$lte:['$leaseUntil','$$NOW']}},[

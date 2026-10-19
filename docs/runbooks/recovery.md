@@ -1,0 +1,66 @@
+# Local encrypted backup and restore
+
+Phase 08C implements a local offline recovery drill. It supports the identity-checked Compose Mongo replica on 127.0.0.1:27017 and loopback S3-compatible storage. It refuses production mode and nonlocal endpoints. It restores into a fresh `restore_<32 lowercase hex>` database and target-owned approved object prefix in the configured private bucket. This is a fresh namespace on the existing local services, not a new host, regional recovery, live PITR or production backup service. See [Phase 08 evidence](../phase-08-evidence.md) for executed results and [operations](operations.md) for draining.
+
+## Capture and restore
+
+Build first. Stop/drain **every source writer**, including API, gateway commands, workers and operator jobs. Even authorized history reads can update guard records; disabling only the composer is insufficient. Stop upload/finalize traffic too. Preserve the source, broker and storage data. The CLI never stops processes or changes source records for you. A db-scoped dump without an oplog is not a live consistent backup: the tool rejects source-namespace writes during capture, including transaction applyOps and DDL, and verifies retained oplog coverage. TTL cleanup can also make a capture fail; retry during a write-free window rather than assuming stopping application processes disabled TTL. Keep writers stopped through a cutover. Never run source and restored namespaces as concurrent authorities for the same clients.
+
+Provision an independent random 32-byte backup key in `RECOVERY_KEY`, encoded as 64 lowercase hex characters. For an ephemeral local drill, PowerShell can assign a generated value without printing it:
+
+```powershell
+$env:RECOVERY_KEY = node --input-type=module -e "import { randomBytes } from 'node:crypto'; process.stdout.write(randomBytes(32).toString('hex'))"
+```
+
+For a retained backup, preserve the key in a separate secret manager/recovery channel **before closing the terminal**. The application session/email/push keys are not backup keys. No key is put in CLI arguments, dump files, manifests, logs, committed fixtures or Docker child environments. Environment variables still require trusted host/process access; this is not a hardware key vault or memory-erasure guarantee. Losing the key makes the bundle unrecoverable. Rotating a key does not rewrite or erase older bundles.
+
+With the source quiescent, from the repository root:
+
+```text
+pnpm ops:recovery backup .cache/recovery/snapshot.crb
+pnpm ops:recovery policy .cache/recovery/snapshot.crb .cache/recovery/current-policy.crb
+pnpm ops:recovery restore .cache/recovery/snapshot.crb .cache/recovery/current-policy.crb
+```
+
+The environment supplies source `MONGODB_DATABASE`, local connection settings and storage credentials. pnpm does not auto-load `.env`; use explicit process variables or `node --env-file=.env --import tsx scripts/recovery.ts ...`. Artifacts must be inside workspace `.cache/` or `infra/compose/.runtime/`; existing files are never overwritten. Symlink/junction redirection is refused. Pick new filenames for each capture.
+
+The policy operation creates a separate encrypted capture of current account/deletion/privacy authority, memberships/visibility, conversation/inbox sequence watermarks, blocks, deleted messages and attachment state. It is bound to that snapshot's random ID, source namespace and replica identity. Capture it again after later deletions/revocations, with writers stopped, and use the latest authoritative file for cutover. Restore requires its capture time to follow the snapshot and be within one hour; stale, missing and foreign policies fail. A freshness timestamp does **not** prove there were no later policy changes or defeat replay of another recent valid policy. The operator must supply the latest trusted boundary and keep source writers stopped. If that authority cannot be established, this workflow does not certify a safe production cutover. Persisting an independent continuously current policy ledger remains a production deployment responsibility.
+
+Restore prints the new target, run owner and snapshot/policy IDs; these identify the operation, not credentials. An optional third argument selects a specific fresh `restore_<uuid>` target. Existing databases, the source and ordinary names such as `chat`, `admin`, `config` and `local` are refused. There is no `--drop` or in-place restore option. On failure, the CLI identifies the candidate target without printing provider errors or keys. Inspect `restoreControl` privately: an existing failed target stays unavailable. Retry into another fresh target. Reclaim failed target objects/databases only after proving their run ownership and namespace; never remove source bytes/volumes to clean a failed restore. Automatic destructive cleanup/resume is deliberately not part of the CLI.
+
+## Format, bounds and trust
+
+One file contains a compressed Mongo archive and approved immutable object bytes, or policy records, inside versioned ordered authenticated frames. A random 20-byte header derives a separate file key using HMAC-SHA256 under the master key. AES-256-GCM frames bind that header and monotonic sequence; their IV combines a file nonce prefix and sequence. Each frame is authenticated before plaintext reaches a handler. Data chunks are at most 64KiB, with entry lengths/SHA256 and a mandatory authenticated terminal manifest and EOF. Wrong keys, edits, reordering, replayed frames, truncation and appended data are rejected. This custom format is tested locally; it has not had an independent cryptographic audit.
+
+Restore fully verifies the first pass before claiming a database. The second pass again verifies each frame before feeding it through bounded backpressure into real `mongorestore`/S3, and compares the final manifest. A changed/incomplete replay cannot promote a target. No plaintext archive, policy or object staging file is written. JSON policy is streamed on capture and bounded during parsing. Encryption does not hide file size, guarantee secure memory erasure or make storage administration trustworthy.
+
+Local limits are 512MiB total payload, 256MiB per entry, 130 entries (one archive plus at most 128 approved objects), 64KiB metadata frames, 80 collections and 50,000 rows per collection. Policy is limited to 5,000 rows per authority collection, 1MiB per record and under 64MiB overall. Existing product attachment limits apply. Mongo subprocesses have a 120s deadline and restore uses one parallel collection; object operations have finite deadlines. Limits reject larger inputs; these are allocation/admission budgets, not measured maximum capacity. The oplog inspection scans at most 10,000 intervening global records and requires the starting boundary still retained. Heavy unrelated replica traffic may cause a safe refusal.
+
+All source collection validators/index definitions and BSON types travel through actual Mongo archive tools. Before sanitizing, restore compares collection options, normalized index definitions (including ordered compound keys, uniqueness and TTL) and counts. Source `schemaMigrations`, `migrationLocks` and `restoreControl` are excluded from replay. Schema markers remain absent until verification finishes; no migration bypass is permitted while the restore fence is closed. The fence remains authoritative for current auth/HTTP readiness/gateway/worker admission even after marker insertion and before final promotion. Liveness and Mongo dependency health remain separate.
+
+## Restored behavior
+
+- Old passwords, sessions, verification/reset tokens and push registrations are invalidated. Current account identity/privacy is reapplied. Active users need a **new password recovery link** using the normal recovery flow after promotion; no old bearer credential is trusted. Deleted accounts remain anonymized and inaccessible.
+- Snapshot/current membership and visibility intersect. Current roles apply only to still-eligible snapshot members; current blocks are retained along with older blocks. Missing current account authority aborts. Ownerless/archived groups remain archived for manual recovery. Retained group messages of surviving authors follow current group authorization rather than being globally erased.
+- Current message tombstones and deleted authors are scrubbed before readiness. Canonical deletion events are appended transactionally. Conversation/inbox counters advance to at least the later policy watermarks so known sequence positions are not reused; replay floors force older positions through an authorized snapshot. This does not recover message bodies or commands created after the backup boundary.
+- Only still-ready, policy-authorized approved objects are copied to unique target-owned keys, then read back and checked for length/SHA256. Missing/inconsistent source approved bytes abort capture; missing restore payloads cannot produce ready attachments. Deleted/nonready attachments are retired; quarantine is not promoted or restored. The source object prefix and previously issued source URLs are not reused by the restored namespace.
+- Snapshot message/command/effect IDs and BSON Long positions remain intact. Claimed outbox/fanout work becomes reclaimable with old owners cleared. Pending outbox intents still require actual confirmed publication. Old notification jobs/push/email work is suppressed; explicit notification suppression effects prevent repeated old events from recreating external work. Fresh recovery mail is a new permitted action after promotion. The snapshot does not include Rabbit/Redis state; fresh database-derived namespaces isolate their new projections.
+- Calls end with `RESTORE_REJOIN_REQUIRED`, participants leave and target room names are retired. Source room records/webhook inbox are not replayed against the provider. Restoring does not migrate live media or revoke source provider credentials: isolate/retire old media authority as part of a real cutover. Users must start a new authorized call. Old source URLs/tokens retain their existing bounded validity wherever the original infrastructure still serves them.
+
+Point the application at the new database **only after** `restoreControl.state` is `ready`, verify recovery/password delivery privately, and take a new backup before ordinary operations. Production account recovery, secret rotation, routing, workloads, independent backup storage and audit access need a separately reviewed deployment procedure. No public deployment is performed by this tool.
+
+## RPO, RTO and retention limits
+
+| Failure class | Boundary |
+| --- | --- |
+| Application process/broker interruption, Mongo intact | Existing transaction/outbox/lease/retry guarantees apply. This workflow does not replace normal replay or establish a new HA guarantee. |
+| Local logical data loss with a valid quiescent bundle | Restore data RPO is the completed snapshot boundary. Acknowledged writes after that point may be lost; current policy watermarks/tombstones do not recover their payloads or all command ledgers. There is no zero-RPO backup claim. |
+| Privacy/revocation after snapshot | A later trusted policy boundary is mandatory. Changes after that boundary are not certified. Keep source quiescent during final capture/cutover; missing trustworthy current authority prevents a safe claim. |
+| Missing/corrupt approved bytes, invalid key, truncated bundle, metadata drift | Refuse promotion. Repair the input or choose a valid backup; do not turn partial recovery into readiness. |
+| Host, storage, replica or regional destruction | Unverified. Local files/services share a failure domain. Independent protected copies, replica topology, PITR/oplog archival, key recovery and a new-host/region drill are not implemented by this local tool. |
+
+Local measured timings and fixture size are recorded in [evidence](../phase-08-evidence.md). Recovery time includes validation and credential recovery/cutover tasks that a dump-only stopwatch omits. No production RTO is promised. Define deployment targets only after independent-host drills and measured workload sizing.
+
+Encrypted snapshots can still contain later-deleted data until backup retention expires or their keys are destroyed under an established policy. Latest-policy sanitization controls the recovered serving namespace; it is not physical erasure of older bundles, copied objects, host swap or caches. Artifacts are ignored, not automatically expired. Establish retention, independent copies and key custody outside this checkout; no regulatory erasure/PITR certification is claimed.
+
+Official references: [mongodump consistency](https://www.mongodb.com/docs/database-tools/mongodump/mongodump-behavior/), [archive namespace mapping and restore options](https://www.mongodb.com/docs/database-tools/mongorestore/), [Node authenticated encryption](https://nodejs.org/docs/latest-v24.x/api/crypto.html). Run `pnpm test:restore` after building and starting baseline/scanner/media services. It uses disposable namespaces, actual tools/storage/scanning/LiveKit, private test keys and the actual CLI. Failed attempts and unexecuted deployment gates remain visible in evidence.

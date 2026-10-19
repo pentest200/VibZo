@@ -9,7 +9,7 @@ import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter } from '@nestjs/platform-fastify';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import type { Config } from '@chat/config';
-import { AuthService, AttachmentService, ConversationService, MessageService, SyncService, SafetyService, CallService, DomainError, createMongoClient, inspectMongo, mongoPoolMetrics } from '@chat/domain';
+import { AuthService, AttachmentService, ConversationService, MessageService, SyncService, SafetyService, CallService, DomainError, createMongoClient, inspectMongo, mongoPoolMetrics, recoveryReady } from '@chat/domain';
 import { createMetrics, createLogger, httpMetrics, beginRequestSpan, DrainTracker, operationalMetrics } from '@chat/observability';
 import { AUTH, AuthController, sessionCookieName } from './auth.js';
 import { CONVERSATIONS, ConversationController } from './conversations.js';
@@ -20,7 +20,7 @@ import { SAFETY, SafetyController } from './safety.js';
 import { CALLS, CallController, CallWebhookController } from './calls.js';
 
 interface Reply { code(status: number): Reply; type(contentType: string): Reply }
-interface Health { dependencies(): Promise<{ mongodb: 'up' | 'down' }>; metrics: ReturnType<typeof createMetrics>; draining(): boolean; poolMetrics(): string }
+interface Health { dependencies(): Promise<{ mongodb: 'up' | 'down' }>; recovery(): Promise<boolean>; metrics: ReturnType<typeof createMetrics>; draining(): boolean; poolMetrics(): string }
 const HEALTH = 'FOUNDATION_HEALTH';
 
 @Controller()
@@ -30,7 +30,7 @@ class FoundationController {
   @Get('/health/dependencies') dependencies() { return this.health.dependencies(); }
   @Get('/health/ready') async ready(@Res({ passthrough: true }) reply: Reply) {
     const dependencies = await this.health.dependencies();
-    const ready = !this.health.draining() && dependencies.mongodb === 'up';
+    const ready = !this.health.draining() && dependencies.mongodb === 'up' && await this.health.recovery();
     reply.code(ready ? 200 : 503);
     return { status: ready ? 'ready' : 'unavailable', service: 'api', phase: 'foundation', dependencies };
   }
@@ -52,7 +52,7 @@ export async function createApi(config: Config) {
   const auth = new AuthService(config, client, client.db(config.MONGODB_DATABASE));
   await auth.initialize();
   const attachments = new AttachmentService(auth);
-  const health: Health = { dependencies: async () => ({ mongodb: await inspectMongo(client) ? 'up' : 'down' }), metrics, draining: () => draining, poolMetrics: () => mongoPoolMetrics(client) };
+  const health: Health = { dependencies: async () => ({ mongodb: await inspectMongo(client) ? 'up' : 'down' }), recovery: () => recoveryReady(auth.db).catch(() => false), metrics, draining: () => draining, poolMetrics: () => mongoPoolMetrics(client) };
   const adapter = new FastifyAdapter({ bodyLimit: 65536, requestTimeout: 10000, trustProxy: false, logger: false, genReqId: () => randomUUID() });
   const app = await NestFactory.create<NestFastifyApplication>({
     module: FoundationModule, controllers: [FoundationController, AuthController, ConversationController, MessageController, SyncController, AttachmentController, SafetyController, CallController, CallWebhookController], providers: [{ provide: CALLS, useValue: new CallService(auth) }, { provide: SAFETY, useValue: new SafetyService(auth) }, { provide: ATTACHMENTS, useValue: attachments }, { provide: HEALTH, useValue: health }, { provide: AUTH, useValue: auth }, { provide:CONVERSATIONS,useValue:new ConversationService(auth) }, { provide:MESSAGES,useValue:new MessageService(auth) }, { provide:SYNC,useValue:new SyncService(auth) }]
@@ -88,6 +88,7 @@ export async function createApi(config: Config) {
   const protectedMutation = new Set(['/api/v1/auth/logout', '/api/v1/auth/password', '/api/v1/auth/verify/request', '/api/v1/me']);
   adapter.getInstance().addHook('preHandler', async (request, reply) => handlers.run(async () => {
     if (!request.routeOptions.url?.startsWith('/api/v1/')) return;
+    if (!await recoveryReady(auth.db)) throw new DomainError('UNAVAILABLE', 'Recovery verification is incomplete.', 503, true);
     if (draining) { http.rejected.inc(); reply.header('Retry-After', '1'); throw new DomainError('UNAVAILABLE', 'Service is draining. Retry shortly.', 503, true); }
     reply.header('X-Request-Id', request.id);
     if (request.routeOptions.url === '/api/v1/webhooks/livekit') return; // Exact raw-body provider JWT verification replaces browser Origin/CSRF here only.

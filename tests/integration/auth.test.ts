@@ -8,6 +8,7 @@ import type { EmailJobRecord, SessionRecord, TokenRecord, UserRecord } from '@ch
 
 const config = loadConfig({ ...process.env, NODE_ENV: 'test', MONGODB_DATABASE: `auth_test_${randomUUID().replaceAll('-','')}`, MAX_SESSIONS: '2' });
 const client = createMongoClient(config); const db = client.db(config.MONGODB_DATABASE);
+const mailpitOrigin = process.env['MAILPIT_URL'] ?? 'http://127.0.0.1:8025';
 const auth = new AuthService(config, client, db);
 let server: Awaited<ReturnType<typeof createApi>>; let base: string;
 const password = 'Synthetic-test-password-123';
@@ -167,7 +168,7 @@ it('sends real queued mail, recovers expired leases, and never completes provide
   await jobs.updateOne({_id:job!._id},{$set:{state:'sending',leaseOwner:'crashed-worker',leaseUntil:new Date(0)}});
   const worker = new AuthEmailWorker(db,config); expect(await worker.runOnce()).toBe(true);
   expect((await jobs.findOne({_id:job!._id}))?.state).toBe('sent'); expect((await jobs.findOne({_id:job!._id}))?.encryptedPayload).toBeNull();
-  const mail = await fetch(`http://127.0.0.1:8025/api/v1/search?query=${encodeURIComponent(`to:${input.email}`)}`);
+  const mail = await fetch(`${mailpitOrigin}/api/v1/search?query=${encodeURIComponent(`to:${input.email}`)}`);
   expect((await mail.json() as { messages: unknown[] }).messages.length).toBeGreaterThan(0);
   const failedInput = await user('failmail'); const failedUser = await db.collection<UserRecord>('users').findOne({emailCanonical:failedInput.email});
   const failure = new AuthEmailWorker(db,config,{async send() { throw new Error('simulated SMTP refusal'); }});

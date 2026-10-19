@@ -11,6 +11,7 @@ import { operationalMetrics } from '@chat/observability';
 import { snapshotAgent, assertLocalInspection, telemetryDirectory } from '../../scripts/telemetry-runtime.js';
 import { messagingFixture, command, cleanBroker, waitFor } from './messaging-fixture.js';
 import { telemetryFixture, faultProxy, through, reservePort, roleProcess } from './telemetry-fixture.js';
+import type { DockerPortBindings } from './telemetry-fixture.js';
 
 let f: Awaited<ReturnType<typeof messagingFixture>>, stack: Awaited<ReturnType<typeof telemetryFixture>>, broker: BrokerTransport, monitor: OperationsMonitor;
 let actor: Awaited<ReturnType<typeof f.user>>, conversation: string;
@@ -46,6 +47,20 @@ async function alert(status: string, name: string, labels: Record<string, string
   await waitFor(async () => { if (agentError) throw agentError; return (await stack.alerts()).history.some(item => item.status === status && item.labels['alertname'] === name && item.receivedAt >= after && Object.entries(labels).every(([key, value]) => item.labels[key] === value)); }, 60000);
 }
 async function dependencyUp(name: string) { await waitFor(async () => (await stack.query(`chat_dependency_up{dependency="${name}"}`))[0]?.value[1] === '1', 45000); }
+function expectPrivateBindings(ports: DockerPortBindings) {
+  // Docker includes exposed-but-unpublished container ports as null map values.
+  const bindings = Object.values(ports).flatMap(bindings => bindings ?? []);
+  expect(bindings.length).toBeGreaterThan(0);
+  expect(bindings.every(binding => binding.HostIp === '127.0.0.1')).toBe(true);
+}
+
+it('handles unpublished Docker ports while rejecting absent or non-loopback published bindings', () => {
+  const privateBinding = { HostIp: '127.0.0.1', HostPort: '4318' };
+  expectPrivateBindings({ '4317/tcp': null, '4318/tcp': [privateBinding], '55679/tcp': null });
+  const unpublished: DockerPortBindings[] = [{}, { '4317/tcp': null }, { '4318/tcp': [] }];
+  for (const ports of unpublished) expect(() => expectPrivateBindings(ports)).toThrow();
+  for (const HostIp of ['0.0.0.0', '::', '192.0.2.1', '']) expect(() => expectPrivateBindings({ '4317/tcp': null, '4318/tcp': [privateBinding, { HostIp, HostPort: '4318' }] })).toThrow();
+});
 
 it('validates actual pinned rule/config binaries, retention and private container listeners', async () => {
   expect(await stack.compose(['exec', '-T', 'prometheus', 'promtool', 'check', 'config', '/etc/prometheus/prometheus.yaml'])).toContain('SUCCESS');
@@ -56,7 +71,7 @@ it('validates actual pinned rule/config binaries, retention and private containe
   expect(flags.data['storage.tsdb.retention.time']).toBe('2h'); expect(flags.data['storage.tsdb.retention.size']).toMatch(/^128/);
   const effective = JSON.parse(await stack.compose(['config', '--format', 'json'])) as { services: Record<string, { ports?: { host_ip: string }[]; mem_limit?: string | number }>; networks: Record<string, { internal?: boolean }> };
   for (const role of ['collector', 'prometheus', 'alertmanager']) expect(effective.services[role]?.ports?.every(port => port.host_ip === '127.0.0.1')).toBe(true);
-  for (const role of ['collector', 'prometheus', 'alertmanager']) { const bindings = Object.values(await stack.portBindings(role)).flat(); expect(bindings.length).toBeGreaterThan(0); expect(bindings.every(binding => binding.HostIp === '127.0.0.1')).toBe(true); }
+  for (const role of ['collector', 'prometheus', 'alertmanager']) expectPrivateBindings(await stack.portBindings(role));
   expect(effective.services['telemetry-relay']?.ports).toBeUndefined(); expect(effective.networks['observing']?.internal).toBe(true);
 });
 

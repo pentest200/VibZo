@@ -6,7 +6,7 @@ import { createClient } from 'redis';
 import { socketAuthSchema, subscriptionSchema, typingSchema, presenceQuerySchema } from '@chat/contracts';
 import type { BrokerEvent, LiveHint } from '@chat/contracts';
 import type { Config } from '@chat/config';
-import { AuthService, SyncService, createMongoClient, inspectMongo, mongoPoolMetrics, syncSchemaReady, syncChannel, parseFanout, DomainError } from '@chat/domain';
+import { AuthService, SyncService, createMongoClient, inspectMongo, mongoPoolMetrics, syncSchemaReady, syncChannel, parseFanout, DomainError, recoveryReady } from '@chat/domain';
 import type { ControlEvent, UserRecord } from '@chat/domain';
 import { createMetrics, DrainTracker, traced, operationalMetrics } from '@chat/observability';
 
@@ -28,7 +28,7 @@ export async function createGateway(config: Config, port = config.GATEWAY_PORT) 
     response.setHeader('Content-Type', 'application/json');
     if (request.url === '/health/live') { response.end(JSON.stringify({ status: 'alive', service: 'gateway' })); return; }
     if (request.url === '/health/ready') {
-      const ready = !closing && pub.isReady && sub.isReady && hints.isReady && await inspectMongo(mongo) && await syncSchemaReady(service.db).catch(() => false);
+      const ready = !closing && pub.isReady && sub.isReady && hints.isReady && await inspectMongo(mongo) && await recoveryReady(service.db).catch(() => false) && await syncSchemaReady(service.db).catch(() => false);
       response.statusCode = ready ? 200 : 503; response.end(JSON.stringify({ status: ready ? 'ready' : 'unavailable', phase: 'sync', service: 'gateway' })); return;
     }
     response.statusCode = 404; response.end(JSON.stringify({ code: 'NOT_FOUND' }));

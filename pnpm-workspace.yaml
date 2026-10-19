@@ -37,3 +37,4 @@ allowBuilds:
   esbuild: true
   '@nestjs/core': false
   argon2: true
+  protobufjs: false # Optional dependency-version warning only; no generated runtime assets.

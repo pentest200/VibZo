@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { recordOperational } from '@chat/observability';
 import type { ClientSession } from 'mongodb';
 import type { CallService } from './service.js';
 import { callSchemaReady } from './migrations.js';
@@ -71,7 +72,7 @@ export class CallWorker {
         });
       } else {
         const room = await service.rooms().findOne({ _id: call.roomName });
-        if (room?.state === 'pending') {
+        if (room?.state === 'pending' && !service.auth.config.MEDIA_DRAINING) {
           await service.provider.create(room._id); await this.afterProviderCreate?.();
           await service.run(async session => {
             const fresh = await guarded(session);
@@ -101,6 +102,7 @@ export class CallWorker {
       }
       await calls.updateOne(live, { $set: { failures: 0, leaseOwner: null, leaseUntil: new Date(0), availableAt: new Date(Date.now() + 1000) } });
     } catch {
+      recordOperational('call_reconcile_failure');
       // Cleanup never silently expires or becomes abandoned after an arbitrary retry count.
       await calls.updateOne(live, { $set: { leaseOwner: null, leaseUntil: new Date(0), availableAt: new Date(Date.now() + Math.min(30000, 1000 * 2 ** Math.min(claim.failures, 5)) + Math.floor(Math.random() * 250)) }, $inc: { failures: 1 } }).catch(() => {});
     } return true;

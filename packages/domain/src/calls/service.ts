@@ -21,12 +21,12 @@ export class CallService extends ConversationStore {
   calls() { return this.db.collection<CallRecord>('calls'); }
   participants() { return this.db.collection<CallParticipant>('callParticipants'); }
   rooms() { return this.db.collection<CallRoom>('callRooms'); }
-  async ready(enabled = true) { if (!await callSchemaReady(this.db) || enabled && !this.auth.config.CALLS_ENABLED) throw unavailable(); }
+  async ready(enabled = true) { if (!await callSchemaReady(this.db) || enabled && (!this.auth.config.CALLS_ENABLED || this.auth.config.MEDIA_DRAINING)) throw unavailable(); }
   async status(token: string | undefined) {
     const principal = await this.auth.authenticate(token);
     if (!principal.user.verifiedAt) throw denied();
     const enabled = this.auth.config.CALLS_ENABLED && await callSchemaReady(this.db);
-    return { enabled, available: enabled && await this.provider.health() };
+    return { enabled, available: enabled && !this.auth.config.MEDIA_DRAINING && await this.provider.health() };
   }
   private async visible(call: CallRecord, userId: string, session: ClientSession) {
     return !!await this.db.collection<VisibilityRecord>('visibilityIntervals').findOne({ conversationId: call.conversationId, userId, startSeq: { $lte: call.creationSeq }, $or: [{ endSeq: null }, { endSeq: { $gt: call.creationSeq } }] }, { session });

@@ -46,7 +46,7 @@ async function signalingAccepted(token: string) {
 }
 it('applies additive 007 idempotently and rejects malformed records', async () => {
   const a = await f.user('migration'); await runMigrations(f.db);
-  expect(await f.db.collection('schemaMigrations').countDocuments()).toBe(7);
+  expect(await f.db.collection('schemaMigrations').countDocuments()).toBe(8);
   expect((await f.auth.current(a.token)).user.id).toBe(a.id);
   await expect(f.db.collection('calls').insertOne({ state: 'active' })).rejects.toMatchObject({ code: 121 });
 });

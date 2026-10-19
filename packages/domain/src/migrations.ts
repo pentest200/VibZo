@@ -7,6 +7,7 @@ import { migrateAttachments } from './attachments/migrations.js';
 import { migrateSync } from './sync/migrations.js';
 import { migrateSafety } from './safety/migrations.js';
 import { migrateCalls } from './calls/migrations.js';
+import { migrateOperations } from './operations/migrations.js';
 interface MigrationLease { _id:string;owner:string|null;leaseUntil:Date;epoch:number }
 export async function runMigrations(db:Db):Promise<void> {
   const owner=randomUUID();const locks=db.collection<MigrationLease>('migrationLocks');
@@ -24,6 +25,6 @@ export async function runMigrations(db:Db):Promise<void> {
     if(!renewed.matchedCount){lost=true;throw new Error('Migration lease expired; retry the idempotent migration');}
   };
   const heartbeat=setInterval(()=>{void assertLease().catch(()=>{lost=true;});},15000).unref();
-  try {await assertLease();await migrateAuth(db);await assertLease();await migrateConversations(db,assertLease);await migrateMessaging(db,assertLease);await migrateSync(db,assertLease);await migrateAttachments(db,assertLease);await migrateSafety(db,assertLease);await migrateCalls(db,assertLease);}
+  try {await assertLease();await migrateAuth(db);await assertLease();await migrateConversations(db,assertLease);await migrateMessaging(db,assertLease);await migrateSync(db,assertLease);await migrateAttachments(db,assertLease);await migrateSafety(db,assertLease);await migrateCalls(db,assertLease);await migrateOperations(db,assertLease);}
   finally {clearInterval(heartbeat);await locks.updateOne({_id:'schema',owner,epoch:lease.epoch},{$set:{owner:null,leaseUntil:new Date(0)}});}
 }

@@ -2,9 +2,21 @@ import { z } from 'zod';
 
 const integer = (fallback: number, max: number) => z.coerce.number().int().min(1).max(max).default(fallback);
 const boolean = z.enum(['true', 'false']).transform(value => value === 'true');
+const httpEndpoint = z.url().refine(value => {
+  const url = new URL(value);
+  return ['http:', 'https:'].includes(url.protocol) && !url.username && !url.password && !url.search && !url.hash;
+}, 'HTTP(S) endpoint must not contain credentials or query');
 const schema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
   HOST: z.string().default('127.0.0.1'),
+  DRAIN_DELAY_MS: z.coerce.number().int().min(0).max(10000).default(1000), DRAIN_TIMEOUT_MS: integer(10000, 60000),
+  OTEL_TRACE_ENABLED: boolean.default(false), OTEL_TRACE_SAMPLE_RATIO: z.coerce.number().min(0).max(1).default(0.1),
+  OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: httpEndpoint.default('http://127.0.0.1:4318/v1/traces'),
+  OPERATIONS_PROBE_TIMEOUT_MS: z.coerce.number().int().min(100).max(3000).default(1000),
+  OPERATIONS_INTERVAL_MS: z.coerce.number().int().min(1000).max(10000).default(5000),
+  RABBITMQ_MANAGEMENT_URL: httpEndpoint.default('http://127.0.0.1:15672'),
+  LIVEKIT_METRICS_URL: httpEndpoint.default('http://127.0.0.1:6789'),
+  OPERATIONS_MEDIA_METRICS: boolean.default(false),
   API_PORT: integer(3000, 65535), GATEWAY_PORT: integer(3001, 65535), WORKER_PORT: integer(3002, 65535),
   WEB_ORIGIN: z.url().default('http://localhost:5173'),
   MONGODB_URI: z.string().regex(/^mongodb(\+srv)?:\/\//).default('mongodb://127.0.0.1:27017/chat?replicaSet=rs0&directConnection=true'),
@@ -37,6 +49,7 @@ const schema = z.object({
   LIVEKIT_API_SECRET: z.string().min(32).default('local-only-livekit-secret-change-before-production'),
   LIVEKIT_API_URL: z.url().default('http://127.0.0.1:7880'), CALLS_ENABLED: boolean.default(false),
   MAX_OPEN_CALLS: integer(1000, 10000), MAX_CALL_ROTATIONS: integer(20, 50),
+  MEDIA_DRAINING: boolean.default(false),
   SESSION_SECRET: z.string().min(32).default('local-only-session-secret-change-before-production'),
   COOKIE_SECURE: boolean.default(false), SCANNER_BYPASS: boolean.default(false),
   MAX_MESSAGE_CODEPOINTS: integer(4000, 4000), MAX_GROUP_MEMBERS: integer(50, 50),
@@ -71,6 +84,7 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
   if (new URL(config.WEB_ORIGIN).origin !== config.WEB_ORIGIN) throw new Error('WEB_ORIGIN must be an exact origin');
   if (config.EFFECT_RETENTION_DAYS < config.COMPLETED_OUTBOX_RETENTION_DAYS) throw new Error('Effect retention must cover completed outbox retention');
   if (config.NODE_ENV === 'production') {
+    if (config.OTEL_TRACE_ENABLED && (!env['OTEL_EXPORTER_OTLP_TRACES_ENDPOINT'] || !config.OTEL_EXPORTER_OTLP_TRACES_ENDPOINT.startsWith('https://'))) throw new Error('Production tracing requires an explicit TLS collector endpoint');
     if (config.CALLS_ENABLED && (!env['LIVEKIT_API_URL'] || !config.LIVEKIT_API_URL.startsWith('https://'))) throw new Error('Production calls require an explicit TLS media API URL');
     if (!env['IMAGE_PROCESSOR_KEY'] || config.IMAGE_PROCESSOR_KEY.startsWith('local-only') || !config.IMAGE_PROCESSOR_URL.startsWith('https://')) throw new Error('Production requires explicit authenticated TLS image processing');
     if (!env['AUTH_EMAIL_KEY'] || config.AUTH_EMAIL_KEY.startsWith('local-only')) throw new Error('Production requires an explicit email encryption key');

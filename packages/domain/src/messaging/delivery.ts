@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { traced, traceCarrier } from '@chat/observability';
 import type { Channel, ConsumeMessage, Message } from 'amqplib';
 import { brokerEventSchema } from '@chat/contracts';
 import type { BrokerEvent } from '@chat/contracts';
@@ -30,21 +31,23 @@ export class OutboxRelay {
   }
   async runOnce() {
     const row = await this.claim(); if (!row) return false;
-    try {
-      const event = await this.service.db.collection<ControlEvent>('conversationEvents').findOne({ _id: row.eventId });
-      if (!event) throw new InvalidBrokerEvent();
-      const reference = eventReference(event);
-      await this.broker.publish(this.broker.prefix, '', Buffer.from(JSON.stringify(reference)), { messageId: reference.eventId, type: 'conversation.event.v1' });
-      await this.complete(row); return true;
-    } catch {
-      this.stats.relayErrors++;
-      await this.service.db.collection<OutboxRecord>('outbox').updateOne({ _id: row._id, status: 'claimed', leaseOwner: row.leaseOwner }, { $set: { status: 'pending', leaseOwner: null, leaseUntil: new Date(0), availableAt: new Date(Date.now() + Math.min(60000, 1000 * 2 ** Math.min(row.attempts, 5)) + Math.floor(Math.random() * 250)) } });
-      throw new Error('Outbox publication delayed');
-    }
+    return traced('outbox.publish', { 'messaging.operation.name': 'publish' }, async () => {
+      try {
+        const event = await this.service.db.collection<ControlEvent>('conversationEvents').findOne({ _id: row.eventId });
+        if (!event) throw new InvalidBrokerEvent();
+        const reference = eventReference(event);
+        await this.broker.publish(this.broker.prefix, '', Buffer.from(JSON.stringify(reference)), { messageId: reference.eventId, type: 'conversation.event.v1', headers: traceCarrier() });
+        await this.complete(row); return true;
+      } catch {
+        this.stats.relayErrors++;
+        await this.service.db.collection<OutboxRecord>('outbox').updateOne({ _id: row._id, status: 'claimed', leaseOwner: row.leaseOwner }, { $set: { status: 'pending', leaseOwner: null, leaseUntil: new Date(0), availableAt: new Date(Date.now() + Math.min(60000, 1000 * 2 ** Math.min(row.attempts, 5)) + Math.floor(Math.random() * 250)) } });
+        throw new Error('Outbox publication delayed');
+      }
+    }, row.traceparent);
   }
 }
 export class EventConsumer {
-  private inFlight = new Set<Promise<void>>(); private channel?: Channel; private tag?: string;
+  private inFlight = new Set<Promise<void>>(); private channel?: Channel; private tag?: string; private stopping = false; private cancellation: Promise<void> | undefined;
   constructor(readonly service: ConversationService, readonly broker: BrokerTransport, readonly subscription: Subscription, readonly stats = new DeliveryStats()) {}
   async apply(reference: BrokerEvent): Promise<boolean> {
     return this.service.run(async session => {
@@ -63,32 +66,42 @@ export class EventConsumer {
     });
   }
   async process(message: Message, channel: Channel) {
-    try {
-      if (message.content.length > this.service.auth.config.MAX_SOCKET_BYTES) throw new InvalidBrokerEvent();
-      let raw: unknown; try { raw = JSON.parse(message.content.toString('utf8')); } catch { throw new InvalidBrokerEvent(); }
-      const parsed = brokerEventSchema.safeParse(raw); if (!parsed.success || message.properties.messageId !== parsed.data.eventId) throw new InvalidBrokerEvent();
-      const changed = await this.apply(parsed.data); if (changed) this.stats.effects++; else this.stats.duplicates++;
-      channel.ack(message);
-    } catch (error) {
-      const next = retryAttempt(message) + 1, permanent = error instanceof InvalidBrokerEvent;
-      if (permanent || next > this.service.auth.config.BROKER_RETRY_ATTEMPTS) {
-        await this.broker.publish(`${this.broker.prefix}.dead`, this.subscription, message.content, { messageId: message.properties.messageId ?? randomUUID(), headers: { 'x-app-attempt': next, 'x-app-reason': permanent ? 'INVALID_EVENT' : 'RETRIES_EXHAUSTED' } }); this.stats.dead++;
-      } else {
-        await this.broker.publish(`${this.broker.prefix}.retry`, `${this.subscription}.${next}`, message.content, { messageId: message.properties.messageId ?? randomUUID(), headers: { 'x-app-attempt': next } }); this.stats.retries++;
+    return traced('broker.consume', { 'messaging.operation.name': 'process', 'messaging.subscription.name': this.subscription }, async () => {
+      try {
+        if (message.content.length > this.service.auth.config.MAX_SOCKET_BYTES) throw new InvalidBrokerEvent();
+        let raw: unknown; try { raw = JSON.parse(message.content.toString('utf8')); } catch { throw new InvalidBrokerEvent(); }
+        const parsed = brokerEventSchema.safeParse(raw); if (!parsed.success || message.properties.messageId !== parsed.data.eventId) throw new InvalidBrokerEvent();
+        const changed = await this.apply(parsed.data); if (changed) this.stats.effects++; else this.stats.duplicates++;
+        channel.ack(message);
+      } catch (error) {
+        const next = retryAttempt(message) + 1, permanent = error instanceof InvalidBrokerEvent;
+        if (permanent || next > this.service.auth.config.BROKER_RETRY_ATTEMPTS) {
+          await this.broker.publish(`${this.broker.prefix}.dead`, this.subscription, message.content, { messageId: message.properties.messageId ?? randomUUID(), headers: { ...traceCarrier(), 'x-app-attempt': next, 'x-app-reason': permanent ? 'INVALID_EVENT' : 'RETRIES_EXHAUSTED' } }); this.stats.dead++;
+        } else {
+          await this.broker.publish(`${this.broker.prefix}.retry`, `${this.subscription}.${next}`, message.content, { messageId: message.properties.messageId ?? randomUUID(), headers: { ...traceCarrier(), 'x-app-attempt': next } }); this.stats.retries++;
+        }
+        // A failed handoff leaves the original unacknowledged; connection recovery redelivers it.
+        channel.ack(message);
       }
-      // A failed handoff leaves the original unacknowledged; connection recovery redelivers it.
-      channel.ack(message);
-    }
+    }, message.properties.headers?.['traceparent']);
   }
   async start() {
+    if (this.stopping) return;
     this.channel = await this.broker.channel(); const channel = this.channel;
+    if (this.stopping) return;
     const reply = await channel.consume(this.broker.queue(this.subscription), (message: ConsumeMessage | null) => {
+      if (this.stopping && message) { channel.nack(message, false, true); return; }
       if (!message) { void this.broker.close(); return; }
       const operation = this.process(message, channel).catch(async () => { await this.broker.close(); }).finally(() => { this.inFlight.delete(operation); });
       this.inFlight.add(operation);
     }, { noAck: false }); this.tag = reply.consumerTag;
+    if (this.stopping) { this.cancellation = undefined; await this.stopIntake(); }
   }
-  async stop() { if (this.channel && this.tag) await this.channel.cancel(this.tag).catch(() => {}); await Promise.allSettled([...this.inFlight]); }
+  stopIntake() {
+    this.stopping = true;
+    return this.cancellation ??= (async () => { if (this.channel && this.tag) await this.channel.cancel(this.tag).catch(() => {}); })();
+  }
+  async stop() { await this.stopIntake(); await Promise.allSettled([...this.inFlight]); }
 }
 export async function deliveryMetrics(db: Db, stats: DeliveryStats): Promise<string> {
   const rows = db.collection<OutboxRecord>('outbox'), query = { status: { $in: ['pending', 'claimed'] as OutboxRecord['status'][] } };

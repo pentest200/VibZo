@@ -22,7 +22,7 @@ async function run(args: string[], allowFailure = false): Promise<boolean> {
 const operation = process.argv[2];
 if (!existsSync('infra/compose/compose.yaml')) throw new Error('Run from repository root');
 switch (operation) {
-  case 'config': await run(['--profile', 'media', '--profile', 'scanner', 'config', '--quiet']); break;
+  case 'config': await run(['--profile', 'media', '--profile', 'scanner', '--profile', 'telemetry', 'config', '--quiet']); break;
   case 'up':
     await run(['up', '-d', '--wait', '--wait-timeout', '240']);
     if (!await run(['exec', '-T', 'garage', '/garage', 'bucket', 'info', 'chat-approved'], true)) {
@@ -31,7 +31,7 @@ switch (operation) {
     await run(['exec', '-T', 'garage', '/garage', 'bucket', 'allow', '--read', '--write', '--owner', 'chat-approved', '--key', 'GK00000000000000000000000000000001']);
     await import('./configure-attachments.js');
     break;
-  case 'down': await run(['--profile', 'media', '--profile', 'scanner', 'down']); break;
+  case 'down': await run(['--profile', 'media', '--profile', 'scanner', '--profile', 'telemetry', 'down']); break;
   case 'media': {
     await run(['--profile', 'media', 'up', '-d', 'livekit']);
     const { loadConfig } = await import('@chat/config'), { LiveKitProvider } = await import('@chat/domain');
@@ -42,6 +42,12 @@ switch (operation) {
     }
     console.log('LiveKit authenticated RoomService ready'); break;
   }
+  case 'telemetry': {
+    const { telemetryDirectory } = await import('./telemetry-runtime.js');
+    process.env['TELEMETRY_RUNTIME_DIR'] = await telemetryDirectory();
+    await run(['--profile', 'telemetry', 'up', '-d', '--build', 'telemetry-relay', 'collector', 'prometheus', 'alertmanager']);
+    console.log('Loopback telemetry profile started; run pnpm ops:telemetry for fresh host snapshots.'); break;
+  }
   case 'scanner': await run(['--profile', 'scanner', 'build', 'image-processor']); await run(['--profile', 'scanner', 'up', '-d', '--wait', '--wait-timeout', '900', 'clamav', 'image-processor', 'image-proxy']); break;
-  default: throw new Error('Usage: infra.ts config|up|down|media|scanner');
+  default: throw new Error('Usage: infra.ts config|up|down|media|scanner|telemetry');
 }

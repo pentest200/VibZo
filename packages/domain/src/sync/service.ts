@@ -1,3 +1,4 @@
+import { recordOperational } from '@chat/observability';
 import { messageAttachments, deleteMessageAttachments } from '../attachments/store.js';
 import { randomUUID } from 'node:crypto';
 import { Long } from 'mongodb';
@@ -32,7 +33,7 @@ export class SyncService extends MessageService {
       const page = rows.slice(0, limit), events = [];
       for (const row of page) if (await this.visible(id, ctx.principal.user._id, row.sequence, session)) events.push(eventReference(row));
       return { events, nextCursor: rows.length > limit ? longToSequence(page.at(-1)!.sequence) : longToSequence(watermark), watermark: longToSequence(watermark), hasMore: rows.length > limit };
-    });
+    }).catch(error => { if (error instanceof DomainError && error.code === 'CURSOR_EXPIRED') recordOperational('replay_cursor_expired'); throw error; });
   }
   private async window(ctx: ConversationContext, before?: string): Promise<ConversationSnapshot> {
     const { session, conversation: c, principal } = ctx;

@@ -1,4 +1,4 @@
-export { createMongoClient, inspectMongo, transactionOptions } from './mongo.js';
+export { createMongoClient, inspectMongo, mongoPoolMetrics, transactionOptions } from './mongo.js';
 export { sequenceToLong, longToSequence } from './sequence.js';
 export { AuthService, GENERIC_AUTH_MESSAGE, requireVerified, requireModerator } from './auth/service.js';
 export { DomainError } from './auth/errors.js';
@@ -43,3 +43,5 @@ export type { CallProvider, MediaParticipant } from './calls/provider.js';
 export type { CallRecord, CallParticipant, CallRoom, CallCommand, CallWebhook } from './calls/model.js';
 export { mediaIdentity } from './calls/model.js';
 export { callSchemaReady } from './calls/migrations.js';
+
+export { OperationsMonitor, dependencies, boundedText, protocolProbe, aggregateMediaMetrics } from './operations/monitor.js';

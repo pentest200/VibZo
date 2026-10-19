@@ -37,6 +37,19 @@ describe('server config safety', () => {
   it('accepts explicit safe production configuration', () => {
     expect(loadConfig(production).NODE_ENV).toBe('production');
   });
+  it('keeps telemetry opt-in and validates private collector and drain settings', () => {
+    expect(loadConfig({}).OTEL_TRACE_ENABLED).toBe(false);
+    expect(loadConfig({}).MEDIA_DRAINING).toBe(false);
+    for (const override of [
+      { OTEL_TRACE_SAMPLE_RATIO: '2' }, { OTEL_TRACE_SAMPLE_RATIO: 'NaN' }, { DRAIN_DELAY_MS: '-1' }, { DRAIN_TIMEOUT_MS: '60001' },
+      { OPERATIONS_INTERVAL_MS: '10001' }, { OPERATIONS_PROBE_TIMEOUT_MS: '3001' }, { RABBITMQ_MANAGEMENT_URL: 'http://user:private@127.0.0.1' },
+      { OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: 'file:///tmp/spans' }, { OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: 'https://user:private@collector.example.test/v1/traces' },
+      { OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: 'https://collector.example.test/v1/traces?token=private' }
+    ]) expect(() => loadConfig(override)).toThrow('Invalid configuration fields');
+    expect(() => loadConfig({ ...production, OTEL_TRACE_ENABLED: 'true' })).toThrow('TLS collector');
+    expect(() => loadConfig({ ...production, OTEL_TRACE_ENABLED: 'true', OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: 'http://collector.example.test/v1/traces' })).toThrow('TLS collector');
+    expect(loadConfig({ ...production, OTEL_TRACE_ENABLED: 'true', OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: 'https://collector.example.test/v1/traces' }).OTEL_TRACE_ENABLED).toBe(true);
+  });
   it.each([
     { SCANNER_BYPASS: 'true' }, { COOKIE_SECURE: 'false' },
     { WEB_ORIGIN: 'http://chat.example.test' }, { WEB_ORIGIN: 'https://chat.example.test/path' },

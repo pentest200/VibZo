@@ -1,5 +1,7 @@
 # Loopback development only. Production TURN/TLS requires a dedicated address/certificate.
 port: 7880
+prometheus:
+  port: 6789
 bind_addresses: ['0.0.0.0']
 rtc:
   tcp_port: 7881

@@ -74,7 +74,7 @@ services:
     mem_limit: 1g
     cpus: 2.0
     pids_limit: 256
-    ports: ['127.0.0.1:7880:7880', '127.0.0.1:7881:7881', '127.0.0.1:7882:7882/udp', '127.0.0.1:3478:3478/udp', '127.0.0.1:50000-50050:50000-50050/udp']
+    ports: ['127.0.0.1:7880:7880', '127.0.0.1:7881:7881', '127.0.0.1:6789:6789', '127.0.0.1:7882:7882/udp', '127.0.0.1:3478:3478/udp', '127.0.0.1:50000-50050:50000-50050/udp']
     # CallService performs the authenticated RoomService health check.
     restart: unless-stopped
   clamav:
@@ -149,11 +149,79 @@ services:
       retries: 20
     restart: unless-stopped
 
+
+  telemetry-relay:
+    profiles: [telemetry]
+    build: ../telemetry
+    image: commonroom-telemetry-relay:0.0.0
+    volumes: ['${TELEMETRY_RUNTIME_DIR:-./.runtime/telemetry}/snapshots:/snapshots:ro', 'telemetry-traces:/traces:ro']
+    networks: [observing]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ['no-new-privileges:true']
+    mem_limit: 128m
+    cpus: 0.25
+    pids_limit: 32
+    init: true
+    healthcheck:
+      test: ['CMD', 'node', '-e', 'fetch("http://127.0.0.1:9465/health/live").then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+  collector:
+    profiles: [telemetry]
+    image: otel/opentelemetry-collector-contrib:0.163.1@sha256:1175b03003053962012f5a231f5567f66a3e8fdb960c7835c0e48f7aa1555806
+    command: [--config=/etc/otelcol/config.yaml]
+    environment: {GOMEMLIMIT: 192MiB}
+    volumes: ['../telemetry/collector.yaml:/etc/otelcol/config.yaml:ro', 'telemetry-traces:/traces']
+    ports: ['127.0.0.1:${TELEMETRY_OTLP_PORT:-4318}:4318']
+    networks: [observing, telemetry-ingress]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ['no-new-privileges:true']
+    mem_limit: 256m
+    cpus: 0.5
+    pids_limit: 64
+  prometheus:
+    profiles: [telemetry]
+    image: prom/prometheus:v3.15.0@sha256:efd719c99d83b060d9daefdcf00360461adf279f45ef5391f8d111892118753e
+    command: [--config.file=/etc/prometheus/prometheus.yaml, --storage.tsdb.path=/prometheus, --storage.tsdb.retention.time=2h, --storage.tsdb.retention.size=128MB, --query.max-concurrency=4, --query.max-samples=100000, --web.max-connections=32]
+    volumes: ['../telemetry/prometheus.yaml:/etc/prometheus/prometheus.yaml:ro', '../telemetry/rules.yaml:/etc/prometheus/rules.yaml:ro', '../telemetry/rules.test.yaml:/etc/prometheus/rules.test.yaml:ro']
+    ports: ['127.0.0.1:${TELEMETRY_PROMETHEUS_PORT:-9090}:9090']
+    networks: [observing, telemetry-ingress]
+    read_only: true
+    tmpfs: ['/prometheus:size=384m,uid=65534,gid=65534,mode=0700,noexec,nosuid', '/tmp:size=16m,uid=65534,gid=65534,mode=0700,noexec,nosuid']
+    cap_drop: [ALL]
+    security_opt: ['no-new-privileges:true']
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 64
+  alertmanager:
+    profiles: [telemetry]
+    image: prom/alertmanager:v0.34.1@sha256:e9733bafb1bdef9b00e25a21f8f99dc26a22224bf16641ad754d1649f4c3357a
+    command: [--config.file=/etc/alertmanager/alertmanager.yaml, --storage.path=/alertmanager, --data.retention=2h, '--cluster.listen-address=', --silences.max-silences=100, --silences.max-silence-size-bytes=4096]
+    volumes: ['../telemetry/alertmanager.yaml:/etc/alertmanager/alertmanager.yaml:ro']
+    ports: ['127.0.0.1:${TELEMETRY_ALERTMANAGER_PORT:-9093}:9093']
+    networks: [observing, telemetry-ingress]
+    read_only: true
+    tmpfs: ['/alertmanager:size=8m,uid=65534,gid=65534,mode=0700,noexec,nosuid']
+    cap_drop: [ALL]
+    security_opt: ['no-new-privileges:true']
+    mem_limit: 128m
+    cpus: 0.25
+    pids_limit: 64
+
 networks:
+  telemetry-ingress: {}
+  observing:
+    internal: true
   scanning: {}
   processing:
     internal: true
 volumes:
+  telemetry-traces:
+    driver: local
+    driver_opts: {type: tmpfs, device: tmpfs, o: 'size=32m,uid=10001,gid=10001,mode=0700,noexec,nosuid'}
   mongo-data:
   rabbit-data:
   garage-meta:

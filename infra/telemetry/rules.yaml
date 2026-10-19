@@ -1,0 +1,90 @@
+groups:
+  - name: commonroom-operations
+    interval: 5s
+    rules:
+      - record: commonroom:acceptance_latency_p95_seconds:5m
+        expr: histogram_quantile(0.95, sum by (le) (rate(chat_http_request_duration_seconds_bucket{role="api",method="POST",route="/api/v1/messages",status="200"}[5m])))
+      - record: commonroom:acceptance_latency_p99_seconds:5m
+        expr: histogram_quantile(0.99, sum by (le) (rate(chat_http_request_duration_seconds_bucket{role="api",method="POST",route="/api/v1/messages",status="200"}[5m])))
+      - record: commonroom:acceptance_server_error_ratio:5m
+        expr: sum(rate(chat_http_request_duration_seconds_count{role="api",method="POST",route="/api/v1/messages",status=~"5.."}[5m])) / clamp_min(sum(rate(chat_http_request_duration_seconds_count{role="api",method="POST",route="/api/v1/messages",status=~"200|5.."}[5m])), 0.001)
+      - alert: CommonroomSnapshotStale
+        expr: chat_snapshot_fresh == 0
+        for: 10s
+        labels: {severity: critical}
+        annotations: {summary: 'Host agent snapshot is missing or stale; dependency state is unknown.'}
+      - alert: CommonroomScrapeUnavailable
+        expr: up{job=~"commonroom.*|collector"} == 0
+        for: 15s
+        labels: {severity: critical}
+        annotations: {summary: 'A telemetry target cannot be scraped.'}
+      - alert: CommonroomDependencyUnavailable
+        expr: (chat_dependency_up == 0 and chat_dependency_enabled == 1 and chat_dependency_observed == 1) and on(role) (chat_snapshot_fresh == 1)
+        for: 10s
+        labels: {severity: critical}
+        annotations: {summary: 'A fresh protocol probe failed; follow the dependency policy.'}
+      - alert: CommonroomProbeStale
+        expr: (time() - chat_dependency_last_probe_timestamp_seconds > 65 and chat_dependency_enabled == 1) and on(role) (chat_snapshot_fresh == 1)
+        for: 15s
+        labels: {severity: warning}
+        annotations: {summary: 'Dependency protocol observation is old or missing.'}
+      - alert: CommonroomRoleUnavailable
+        expr: (chat_role_scrape_up{role!="ops"} == 0) and on(role) (chat_snapshot_fresh == 1)
+        for: 15s
+        labels: {severity: critical}
+        annotations: {summary: 'Role metrics endpoint is unavailable; liveness and readiness are separate signals.'}
+      - alert: CommonroomRoleNotReady
+        expr: ((chat_role_ready{role!="ops"} == 0 and chat_role_live == 1) unless (chat_process_draining == 1)) and on(role) (chat_snapshot_fresh == 1)
+        for: 15s
+        labels: {severity: warning}
+        annotations: {summary: 'A live role refuses readiness and is not deliberately draining.'}
+      - alert: CommonroomDurableWorkDelayed
+        expr: chat_durable_oldest_age_seconds > 30 and on(role) (chat_inventory_observed == 1 and chat_snapshot_fresh == 1)
+        for: 15s
+        labels: {severity: warning}
+        annotations: {summary: 'Oldest pending durable intent exceeds the local recovery threshold.'}
+      - alert: CommonroomDurableWorkFailed
+        expr: chat_durable_failed > 0 and on(role) (chat_inventory_observed == 1 and chat_snapshot_fresh == 1)
+        for: 10s
+        labels: {severity: warning}
+        annotations: {summary: 'A durable job requires operator recovery; do not discard its ledger.'}
+      - alert: CommonroomDeadLetters
+        expr: chat_broker_queue_ready{queue=~".*_dead"} > 0 and on(role) (chat_snapshot_fresh == 1)
+        for: 10s
+        labels: {severity: warning}
+        annotations: {summary: 'Broker dead letters require audited, bounded replay.'}
+      - alert: CommonroomInventoryUnknown
+        expr: chat_inventory_observed == 0 and on(role) (chat_snapshot_fresh == 1)
+        for: 20s
+        labels: {severity: warning}
+        annotations: {summary: 'Durable inventory cannot be observed; absent counts do not mean empty queues.'}
+      - alert: CommonroomMongoPoolPressure
+        expr: (chat_mongo_pool_waiting > 0 or chat_mongo_pool_checked_out / chat_mongo_pool_limit > 0.8) and on(role) (chat_snapshot_fresh == 1)
+        for: 30s
+        labels: {severity: warning}
+        annotations: {summary: 'Application Mongo pool budget is under sustained pressure.'}
+      - alert: CommonroomReplicationDegraded
+        expr: (chat_mongo_members_healthy < chat_mongo_members or chat_mongo_replication_lag_seconds > 5) and on(role) (chat_snapshot_fresh == 1)
+        for: 30s
+        labels: {severity: critical}
+        annotations: {summary: 'Observed replica member health or lag is degraded; local single-node tests are not HA evidence.'}
+      - alert: CommonroomAcceptanceLatency
+        expr: commonroom:acceptance_latency_p95_seconds:5m > 0.3
+        for: 5m
+        labels: {severity: warning}
+        annotations: {summary: 'Successful message acceptance p95 exceeds the target; not a browser delivery measure.'}
+      - alert: CommonroomAcceptanceErrors
+        expr: commonroom:acceptance_server_error_ratio:5m > 0.01
+        for: 5m
+        labels: {severity: critical}
+        annotations: {summary: 'Observed eligible acceptance requests have excessive server errors.'}
+      - alert: CommonroomProjectionLag
+        expr: histogram_quantile(0.95, sum by (le) (rate(chat_projection_publish_lag_seconds_bucket[5m]))) > 3
+        for: 5m
+        labels: {severity: warning}
+        annotations: {summary: 'Completed canonical-to-Redis projection publication p95 is slow; not browser receipt latency.'}
+      - alert: CommonroomWorkerFailures
+        expr: increase(chat_worker_failure_total{role="worker"}[5m]) > 5 and on(role) (chat_snapshot_fresh == 1)
+        for: 15s
+        labels: {severity: warning}
+        annotations: {summary: 'Worker methods repeatedly failed; preserved claims/jobs remain authoritative.'}

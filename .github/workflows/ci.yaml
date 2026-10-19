@@ -34,6 +34,12 @@ jobs:
       - run: pnpm test:integration:safety
       - run: pnpm infra:media
       - run: pnpm test:integration:calls
+      - run: pnpm test:integration:operations
+      - name: Prepare pinned optional telemetry tools
+        run: |
+          docker --config .cache/docker compose -f infra/compose/compose.yaml --profile telemetry build telemetry-relay
+          docker --config .cache/docker compose -f infra/compose/compose.yaml --profile telemetry pull collector prometheus alertmanager
+      - run: pnpm test:failure:dependencies
       - run: pnpm exec playwright install --with-deps chromium
         env:
           PLAYWRIGHT_BROWSERS_PATH: .cache/ms-playwright

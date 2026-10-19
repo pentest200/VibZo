@@ -2,10 +2,15 @@ import { pino } from 'pino';
 import { collectDefaultMetrics, Registry } from '@prometheus-io/client';
 import { trace } from '@opentelemetry/api';
 import { createServer } from 'node:http';
+import { traceFields } from './tracing.js';
+export { startTelemetry, traced, traceCarrier, traceFields, safeTraceparent, beginRequestSpan } from './tracing.js';
+export { httpMetrics } from './http-metrics.js';
+export { DrainTracker } from './drain.js';
+export { recordOperational, observeProjectionLag, operationalMetrics } from './operational-metrics.js';
 
 export function createLogger(service: string, level = 'info', destination?: Parameters<typeof pino>[1]) {
   return pino({
-    level, base: { service },
+    level, base: { service }, mixin: traceFields,
     // Log identifiers/classification, never whole transport or provider errors.
     redact: { paths: ['password', 'token', 'secret', 'body', 'text', 'url', 'cookie', 'authorization', '*.password', '*.token', '*.secret', '*.body', '*.text', '*.url', 'req.headers', 'res.headers', '*.credentials', '*.passwordHash', '*.sessionToken'], censor: '[REDACTED]' }
   }, destination);
@@ -18,7 +23,7 @@ export function createMetrics() {
 export const tracer = trace.getTracer('chat-application', '0.0.0');
 
 // Foundation processes expose liveness but refuse readiness until their functional phase.
-export async function startFoundationProcess(service: 'gateway' | 'worker', host: string, port: number, level: string, runtime?: { ready: () => boolean; metrics: () => Promise<string> }) {
+export async function startFoundationProcess(service: 'gateway' | 'worker', host: string, port: number, level: string, runtime?: { managedShutdown?: boolean; ready: () => boolean; metrics: () => Promise<string> }) {
   const logger = createLogger(service, level);
   const metrics = createMetrics();
   const server = createServer(async (request, response) => {
@@ -41,6 +46,6 @@ export async function startFoundationProcess(service: 'gateway' | 'worker', host
   await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(port, host, resolve); });
   logger.info({ port }, 'foundation process listening');
   const stop = () => { server.close(() => { metrics.clear(); logger.info('process drained'); }); };
-  process.once('SIGTERM', stop); process.once('SIGINT', stop);
+  if (!runtime?.managedShutdown) { process.once('SIGTERM', stop); process.once('SIGINT', stop); }
   return server;
 }

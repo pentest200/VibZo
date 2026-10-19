@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { traced, observeProjectionLag } from '@chat/observability';
 import { createClient } from 'redis';
 import type { Config } from '@chat/config';
 import { brokerEventSchema } from '@chat/contracts';
@@ -22,13 +23,16 @@ export class FanoutWorker {
     const owner = randomUUID(), jobs = this.db.collection<ProjectionJob>('fanoutJobs');
     const row = await jobs.findOneAndUpdate({ $or: [{ state: 'pending' }, { state: 'claimed', $expr: { $lte: ['$leaseUntil', '$$NOW'] } }] }, [{ $set: { state: 'claimed', leaseOwner: owner, leaseUntil: { $dateAdd: { startDate: '$$NOW', unit: 'second', amount: 30 } } } }], { sort: { createdAt: 1 }, returnDocument: 'after' });
     if (!row) return false;
-    try {
-      const canonical = await this.db.collection<ControlEvent>('conversationEvents').findOne({ _id: row.eventId }); if (!canonical) throw new Error('Canonical event missing');
-      const reference = eventReference(canonical);
-      await this.redis.withCommandOptions({ timeout: this.config.DEPENDENCY_TIMEOUT_MS }).publish(syncChannel(this.config), JSON.stringify(reference));
-      const result = await jobs.updateOne({ _id: row._id, state: 'claimed', leaseOwner: owner, $expr: { $gt: ['$leaseUntil', '$$NOW'] } }, { $set: { state: 'published', leaseOwner: null, leaseUntil: new Date(0), publishedAt: new Date() } });
-      if (!result.matchedCount) throw new Error('Fanout lease lost'); return true;
-    } catch { await jobs.updateOne({ _id: row._id, state: 'claimed', leaseOwner: owner }, { $set: { state: 'pending', leaseOwner: null, leaseUntil: new Date(0) } }); throw new Error('Fanout delayed'); }
+    const source = await this.db.collection<{ _id: string; traceparent?: string }>('outbox').findOne({ _id: row.eventId }, { projection: { traceparent: 1 } });
+    return traced('fanout.publish', {}, async () => {
+      try {
+        const canonical = await this.db.collection<ControlEvent>('conversationEvents').findOne({ _id: row.eventId }); if (!canonical) throw new Error('Canonical event missing');
+        const reference = eventReference(canonical);
+        await this.redis.withCommandOptions({ timeout: this.config.DEPENDENCY_TIMEOUT_MS }).publish(syncChannel(this.config), JSON.stringify(reference));
+        const result = await jobs.updateOne({ _id: row._id, state: 'claimed', leaseOwner: owner, $expr: { $gt: ['$leaseUntil', '$$NOW'] } }, { $set: { state: 'published', leaseOwner: null, leaseUntil: new Date(0), publishedAt: new Date() } });
+        if (!result.matchedCount) throw new Error('Fanout lease lost'); observeProjectionLag(Math.max(0, (Date.now() - canonical.createdAt.getTime()) / 1000)); return true;
+      } catch { await jobs.updateOne({ _id: row._id, state: 'claimed', leaseOwner: owner }, { $set: { state: 'pending', leaseOwner: null, leaseUntil: new Date(0) } }); throw new Error('Fanout delayed'); }
+    }, source?.traceparent);
   }
   async close() { if (this.redis.isOpen) this.redis.destroy(); }
 }

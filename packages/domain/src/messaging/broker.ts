@@ -10,6 +10,7 @@ export class BrokerTransport {
   private connection!: ChannelModel;
   private publisher!: ConfirmChannel;
   private channels: Channel[] = [];
+  private released = new WeakSet<Channel>();
   private pending = new Map<string, { reject: (error: Error) => void }>();
   failed = false;
   private constructor(readonly config: Config) { this.prefix = `${config.BROKER_NAMESPACE}.${config.MONGODB_DATABASE}`; }
@@ -53,8 +54,15 @@ export class BrokerTransport {
   async channel(): Promise<Channel> {
     if (this.failed) throw new BrokerUnavailable();
     const channel = await this.connection.createChannel(); this.channels.push(channel);
-    channel.on('error', () => this.fail()); channel.on('close', () => { if (!this.failed) this.fail(); });
+    channel.on('error', () => this.fail()); channel.on('close', () => { if (!this.released.has(channel) && !this.failed) this.fail(); });
     await channel.prefetch(Math.min(this.config.BROKER_PREFETCH, this.config.JOB_CONCURRENCY)); return channel;
+  }
+  async releaseChannel(channel: Channel) {
+    if (!this.channels.includes(channel)) throw new Error('Broker does not own channel');
+    this.released.add(channel);
+    try { await channel.close(); }
+    catch { this.fail(); }
+    finally { this.channels = this.channels.filter(owned => owned !== channel); }
   }
   async publish(exchange: string, routingKey: string, content: Buffer, options: Options.Publish = {}): Promise<void> {
     if (this.failed || this.pending.size >= 256 || content.length > this.config.MAX_SOCKET_BYTES) throw new BrokerUnavailable();

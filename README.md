@@ -6,6 +6,8 @@ A TypeScript web messaging and calling application being built in verified phase
 
 Phase 07 direct/group audio/video, screen sharing, removal/rejoin and native camera-denial flows pass local Chromium checks with generated test media. Forced TURN media currently fails and remains an open acceptance gate; authenticated relay allocation alone passes. Calling is disabled by default. See the [calling runbook](docs/runbooks/calls.md) for setup and the exact verification boundary.
 
+Phase 08 operations is in progress: bounded OpenTelemetry tracing, durable/broker correlation, HTTP/Mongo pool and operational metrics, tracked API/gateway/worker drains, media maintenance, and an optional private collector/Prometheus/Alertmanager profile with dependency/fault checks. See the [operations runbook](docs/runbooks/operations.md) and [Phase 08 evidence](docs/phase-08-evidence.md) for executed scope. Backup/restore and overlapping-release drills remain outstanding; the whole phase is not verified.
+
 ## Local setup
 
 Install a supported Node LTS (CI pins 24.21.0; engines also accept Node >=22.22 on the 22 line), and a Linux-container Docker engine with Compose. Baseline services plan for >=4 CPUs, >=8 GiB free RAM and >=10 GiB free disk; scanner/media/telemetry need additional resources, not benchmarked. All dependency ports bind loopback. Compose is intentionally single-node, development-only with public local credentials, no Mongo authentication and no dependency TLS.
@@ -61,13 +63,17 @@ pnpm infra:media
 pnpm test:integration:calls
 pnpm test:e2e:calls
 pnpm test:e2e:calls:relay
-pnpm infra:scanner
+pnpm test:integration:operations
+pnpm infra:telemetry
+pnpm test:failure:dependencies
 pnpm infra:down
 ```
 
 `infra:up` initializes a Mongo replica set, starts baseline dependencies, creates private Garage quarantine/approved buckets and grants only the development storage identity. Repeated start must preserve volumes. `infra:down` does not remove volumes. The scanner profile starts real ClamAV, a restricted image decoder and its fixed-route proxy; it is required for attachment processing. Media remains optional; enable it on API and worker using the [calling runbook](docs/runbooks/calls.md). Network gates remain scoped to their recorded evidence. Standard tests require built shared packages; `build` comes first on a fresh checkout. Real integration tests fail on missing services; no in-memory Mongo substitute or silent skip.
 
-CI includes frozen installation/build/typecheck/lint/unit/HTTP, Compose/service/transaction checks, migration/auth/conversation/messaging integration, outbox/gateway failure tests, Chromium auth/conversation/messaging/synchronization/attachment tests, real scanner/image processing checks, and workspace/processor high-severity production dependency audits. No remote CI run is claimed from local execution. Load/fault harnesses and later browser suites remain planned.
+Optional telemetry: `pnpm infra:telemetry` starts pinned local tools; run `pnpm ops:telemetry` in another terminal for bounded loopback snapshots. Prometheus/Alertmanager/OTLP bind 127.0.0.1:9090/9093/4318. No external alert provider is configured. Enable tracing separately on each application role; defaults remain off. The profile budgets 1 GiB container memory and additional bounded tmpfs/host overhead; it is not a measured resource minimum. [Operations instructions](docs/runbooks/operations.md) cover freshness, privacy, targets, dependency policy and stopping just these tools.
+
+CI includes frozen installation/build/typecheck/lint/unit/HTTP, Compose/service/transaction checks, migration/auth/conversation/messaging integration, outbox/gateway failure tests, Chromium auth/conversation/messaging/synchronization/attachment tests, real scanner/image processing and backend calling/drain checks, pinned telemetry preparation/dependency fault alerts, and workspace/processor high-severity production dependency audits. No remote CI run is claimed from local execution. Disclosed capacity benchmarks and remaining feature/browser gates remain planned.
 
 Register at `/register`, sign in at `/login`, and manage profile/sessions at `/account`. Once verified, choose **Open conversations** or visit `/chat` to find contacts and manage direct/groups. Send text/replies and ready attachments, edit/delete your messages, react and explicitly mark messages read in the selected conversation. See the [synchronization runbook](docs/runbooks/synchronization.md) for live/offline recovery, receipt policy and bounded queues/windows. See the [messaging runbook](docs/runbooks/messaging.md) for acceptance, retries, broker/DLQ operations and limits. See the [conversation runbook](docs/runbooks/conversations.md) for invitations, history visibility, roles, blocks and group/direct permission policy. Start the worker (`pnpm dev` includes it) so verification/reset mail appears in local Mailpit. Follow each one-use email link; its fragment is removed from the visible URL immediately and kept only in memory. Refreshing a link page requires reopening the email. Production cookies are Secure/HttpOnly/SameSite with `__Host-` prefix; development HTTP uses an explicitly non-Secure cookie. Sessions last 7 days initially; one-use links last 30 minutes. See [auth runbook](docs/runbooks/auth.md) for rate limits, revocation, email retries and secret rotation.
 

@@ -79,7 +79,7 @@ it('requires moderator privilege and audits bounded DLQ replay while refusing ex
   const ref = await reference(); await broker.publish(`${broker.prefix}.dead`, 'fanout', Buffer.from(JSON.stringify(ref)), { messageId: ref.eventId });
   await expect(replayDeadLetters(f.service, broker, owner.token, 'fanout', 1)).rejects.toMatchObject({ status: 403 });
   await f.db.collection<UserRecord>('users').updateOne({ _id: owner.id }, { $set: { role: 'moderator' } }); // Test-only privilege fixture.
-  // Replay has its own short-lived channel; use a separate connection so closing it doesn't end this test's consumers.
+  // Model the operator CLI's dedicated connection; channel release itself preserves a shared transport.
   const replay = await BrokerTransport.open(f.config);
   try { expect(await replayDeadLetters(f.service, replay, owner.token, 'fanout', 1)).toBe(1); } finally { await replay.close(); }
   expect(await f.db.collection('auditEvents').countDocuments({ action: 'dlq.replay_requested.fanout' })).toBe(1);
@@ -128,7 +128,8 @@ it('keeps durable acceptance during real RabbitMQ outage, enforces cap, and drai
     await execute('docker', [...docker, 'stop', 'rabbitmq'], { timeout: 30000 });
     await expect(BrokerTransport.open(f.config)).rejects.toThrow('unavailable');
     const mailUser = await f.user('outagemail');
-    await waitFor(async () => { const response = await fetch(`http://127.0.0.1:8025/api/v1/search?query=${encodeURIComponent(`to:${mailUser.email}`)}`); return ((await response.json()) as { messages: unknown[] }).messages.length > 0; });
+    const mailpitOrigin = process.env['MAILPIT_URL'] ?? 'http://127.0.0.1:8025';
+    await waitFor(async () => { const response = await fetch(`${mailpitOrigin}/api/v1/search?query=${encodeURIComponent(`to:${mailUser.email}`)}`); return ((await response.json()) as { messages: unknown[] }).messages.length > 0; });
     expect((await fetch('http://127.0.0.1:39002/health/live')).status).toBe(200);
     expect((await fetch('http://127.0.0.1:39002/health/ready')).status).toBe(503);
     // The worker published the initial group before the outage; only the new message now occupies admission.

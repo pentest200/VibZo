@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { traceCarrier } from '@chat/observability';
 import { Long } from 'mongodb';
 import type { ClientSession } from 'mongodb';
 import { MAX_SEQUENCE } from '@chat/contracts';
@@ -81,7 +82,10 @@ export class ConversationStore {
     if(!conversation)throw conflict('Conversation sequence is exhausted.');
     const now=new Date();
     await this.db.collection<ControlEvent>('conversationEvents').insertOne({_id:eventId,schemaVersion:1,conversationId,sequence:conversation.nextEventSeq,actorId,kind,payload,createdAt:now},{session});
-    await this.db.collection<OutboxRecord>('outbox').insertOne({_id:eventId,schemaVersion:1,eventId,topic:'conversation.event.v1',status:'pending',availableAt:now,leaseUntil:new Date(0),leaseOwner:null,attempts:0,publishedAt:null,createdAt:now},{session});
+    const carrier=traceCarrier();
+    // New code can precede DDL during an overlap: omit optional fields until 008.
+    const traceparent=carrier['traceparent']&&await this.db.collection<{_id:string}>('schemaMigrations').findOne({_id:'008_operations'},{session})?carrier['traceparent']:undefined;
+    await this.db.collection<OutboxRecord>('outbox').insertOne({_id:eventId,schemaVersion:1,eventId,topic:'conversation.event.v1',status:'pending',availableAt:now,leaseUntil:new Date(0),leaseOwner:null,attempts:0,publishedAt:null,createdAt:now,...(traceparent?{traceparent}:{})},{session});
     const memberLimit=conversation.kind==='direct'?2:this.auth.config.MAX_GROUP_MEMBERS;
     const recipients=await this.members().find({conversationId,$or:[{state:'active'},{state:'invited',invitationExpiresAt:{$gt:now}}]},{session}).limit(memberLimit+1).toArray();
     if(recipients.length>memberLimit)throw conflict('Conversation membership limit is exceeded.');

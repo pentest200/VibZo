@@ -43,7 +43,11 @@
     "push:configure": "tsx scripts/configure-push.ts",
     "test:integration:calls": "vitest run --config tests/integration/calls.config.ts",
     "test:e2e:calls": "playwright test --config tests/e2e/calls.config.ts",
-    "test:e2e:calls:relay": "playwright test --config tests/e2e/calls-relay.config.ts"
+    "test:e2e:calls:relay": "playwright test --config tests/e2e/calls-relay.config.ts",
+    "test:integration:operations": "vitest run --config tests/integration/operations.config.ts",
+    "infra:telemetry": "tsx scripts/infra.ts telemetry",
+    "ops:telemetry": "tsx scripts/telemetry-agent.ts",
+    "test:failure:dependencies": "vitest run --config tests/integration/dependencies.config.ts"
   },
   "devDependencies": {
     "@aws-sdk/client-s3": "3.1150.0",

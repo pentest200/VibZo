@@ -1,6 +1,7 @@
 import { test, expect, chromium } from '@playwright/test';
 import type { Page, Browser } from '@playwright/test';
 import { login, register, search } from './chat-fixture.js';
+import { recordMedia } from './media-audit.js';
 import { loadConfig } from '@chat/config';
 import { createMongoClient } from '@chat/domain';
 
@@ -111,7 +112,7 @@ test('two independent users exchange real generated audio/video, control devices
     await expect(page.getByRole('region', { name: 'Current call', exact: true }).getByRole('status').first()).toHaveText('ended', { timeout: 15000 });
   } finally { await second.context.close(); }
 });
-test('three users share a group call and moderator removal forces an authorized room change', async ({ page, browser, request }) => {
+test('three users share a group call and moderator removal forces an authorized room change', async ({ page, browser, request }, info) => {
   const alice = await register(request, 'groupcaller'), bob = await register(request, 'groupbob'), carol = await register(request, 'groupcarol');
   const second = await otherPage(browser), third = await otherPage(browser); await instrument(page);
   try {
@@ -124,13 +125,18 @@ test('three users share a group call and moderator removal forces an authorized 
     await page.getByRole('button', { name: 'Video call', exact: true }).click();
     for (const target of [second.page, third.page]) await target.getByRole('button', { name: 'Accept call', exact: true }).click();
     await remoteVideo(page, 2); await remoteVideo(second.page, 2); await remoteVideo(third.page, 2);
+    await recordMedia(page, info, 'group-owner-connected'); await recordMedia(second.page, info, 'group-peer-connected'); await recordMedia(third.page, info, 'group-third-connected');
     await page.getByRole('button', { name: 'Remove groupcarol from call', exact: true }).click();
     await expect(third.page.locator('.call-tracks video')).toHaveCount(0, { timeout: 15000 });
     await expect(third.page.locator('.call-participants')).toContainText('groupcarol (you)');
     await remoteVideo(page); await remoteVideo(second.page);
     await page.getByRole('button', { name: 'End call for everyone', exact: true }).click();
     await expect(second.page.locator('.call-tracks video')).toHaveCount(0, { timeout: 15000 });
-  } finally { await second.context.close(); await third.context.close(); }
+  } finally {
+    console.info('Group cleanup: closing peer context'); await second.context.close();
+    console.info('Group cleanup: peer closed, closing third context'); await third.context.close();
+    console.info('Group cleanup: all auxiliary contexts closed');
+  }
 });
 test('native camera denial keeps a listener connected and exposes a retry control', async ({ page, request }) => {
   // The default test browser's fake permission UI deliberately overrides denial.

@@ -1,7 +1,7 @@
 import type { AttachmentReference } from '@chat/contracts';
 export type AttachmentKind = AttachmentReference['kind'];
 export interface AttachmentRecord {
-  _id: string; schemaVersion: 1; ownerId: string; conversationId: string; name: string; kind: AttachmentKind; size: number; sha256: string;
+  _id: string; schemaVersion: 1; ownerId: string; conversationId: string | null; purpose?: 'avatar'; avatarActive?: boolean; name: string; kind: AttachmentKind; size: number; sha256: string;
   state: 'pending' | 'uploaded' | 'processing' | 'ready' | 'rejected' | 'deleting' | 'deleted';
   sourceKey: string; approvedKey: string | null; approvedSize: number; approvedType: string | null; approvedSha256: string | null; sourceCleaned: boolean; messageId: string | null;
   reservedBytes: number; error: string; uploadExpiresAt: Date; expiresAt: Date; createdAt: Date;

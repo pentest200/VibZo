@@ -1,0 +1,11 @@
+import { z } from 'zod';
+import { idSchema } from './primitives.js';
+import { reserveAttachmentSchema, attachmentSchema } from './attachments.js';
+export const reserveAvatarSchema = reserveAttachmentSchema.omit({ conversationId: true }).extend({ kind: z.enum(['jpeg', 'png', 'webp']), size: z.number().int().min(1).max(5242880) });
+export const avatarVisibilitySchema = z.enum(['self', 'conversations']);
+export const avatarPublishSchema = z.strictObject({ commandId: idSchema, avatarId: idSchema, expectedAvatarId: idSchema.nullable() });
+export const avatarRemoveSchema = z.strictObject({ commandId: idSchema, avatarId: idSchema });
+export const avatarPrivacySchema = z.strictObject({ commandId: idSchema, visibility: avatarVisibilitySchema });
+export const avatarDownloadSchema = z.strictObject({ conversationId: idSchema.optional() });
+export const avatarSettingsSchema = z.strictObject({ avatarId: idSchema.nullable(), visibility: avatarVisibilitySchema, items: z.array(attachmentSchema).max(10) });
+export const avatarAckSchema = z.strictObject({ avatarId: idSchema.nullable(), status: z.literal('accepted') });

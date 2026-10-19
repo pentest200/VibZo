@@ -35,5 +35,6 @@ export * from './messaging.js';
 export * from './sync.js';
 
 export * from './attachments.js';
+export * from './avatars.js';
 export * from './safety.js';
 export * from './calls.js';

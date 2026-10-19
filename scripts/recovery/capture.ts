@@ -5,7 +5,7 @@ import type { Config } from '@chat/config';
 import { createMongoClient, recoveryReady } from '@chat/domain';
 import type { AttachmentRecord } from '@chat/domain';
 import { createBundle, inspectBundle, RecoveryError } from './bundle.js';
-import { assertLocal, authorityId, catalog, json, mongoContainer, privatePath, quiescent, tool } from './runtime.js';
+import { assertLocal, authorityId, catalog, json, mongoContainer, privatePath, quiescent, tool, supportedMarkers } from './runtime.js';
 
 export const policyCollections = ['users', 'memberships', 'visibilityIntervals', 'conversations', 'inboxCounters', 'blocks', 'pairGuards', 'messages', 'attachments'] as const;
 export function storage(config: Config) { return new S3Client({ endpoint: config.S3_ENDPOINT, region: config.S3_REGION, forcePathStyle: true, maxAttempts: 1, credentials: { accessKeyId: config.S3_ACCESS_KEY, secretAccessKey: config.S3_SECRET_KEY }, requestChecksumCalculation: 'WHEN_REQUIRED', responseChecksumValidation: 'WHEN_REQUIRED', requestHandler: { connectionTimeout: 3000, requestTimeout: 30000 } }); }
@@ -17,7 +17,7 @@ export async function captureSnapshot(config: Config, output: string, key: Buffe
     if (!await recoveryReady(db)) throw new RecoveryError('Source restore is incomplete');
     return await quiescent(client, db.databaseName, async () => {
       const markers = await db.collection<{ _id: string; appliedAt: Date }>('schemaMigrations').find().sort({ _id: 1 }).toArray();
-      if (markers.length !== 8 || markers.at(-1)?._id !== '008_operations') throw new RecoveryError('Source requires schema 001-008');
+      if (!supportedMarkers(markers)) throw new RecoveryError('Source requires exact schema 001-008 or 001-009');
       const meta = await catalog(db), attachments = await db.collection<AttachmentRecord>('attachments').find({ state: 'ready' }).limit(129).toArray();
       if (attachments.length > 128) throw new RecoveryError('Approved object budget exceeded');
       const objects: { id: string; entry: string; bytes: number; sha256: string; type: string; key: string }[] = [];

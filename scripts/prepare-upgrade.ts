@@ -41,7 +41,9 @@ export async function prepareUpgradeArtifact() {
   }
   const source = JSON.parse(await readFile(sourceMarker, 'utf8')) as { commit: string; lockSha256: string };
   if (source.commit !== commit || source.lockSha256 !== await hash(join(directory, 'pnpm-lock.yaml'))) throw new Error('Occupied artifact does not match prior source');
-  await run(['install', '--offline', '--frozen-lockfile', `--config.cacheDir=${join(root, '.cache/pnpm')}`, '--store-dir', join(root, '.pnpm-store'), '--state-dir', join(directory, '.cache/state')]);
+  // A current-release install need not cache registry/policy metadata required
+  // by the prior lockfile. Reuse caches, but allow normal validated fetches.
+  await run(['install', '--frozen-lockfile', `--config.cacheDir=${join(root, '.cache/pnpm')}`, '--store-dir', join(root, '.pnpm-store'), '--state-dir', join(directory, '.cache/state')]);
   await run(['--filter', '@chat/api...', 'build']);
   const result = { commit, domainSha256: await hash(join(directory, 'packages/domain/dist/index.js')), apiSha256: await hash(join(directory, 'apps/api/dist/app.js')), lockSha256: await hash(join(directory, 'pnpm-lock.yaml')) };
   await writeFile(marker, JSON.stringify(result), { flag: 'wx' });

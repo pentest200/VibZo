@@ -31,6 +31,7 @@ export class AttachmentWorker {
       const kind = detectFile(input); if (kind !== row.kind || !auth.config.ALLOWED_ATTACHMENT_TYPES.includes(kind)) throw new FileRejected('The file signature does not match its type.');
       await scanBytes(input, auth.config);
       const image = ['jpeg', 'png', 'webp'].includes(kind), output = image ? await transformImage(input, kind, auth.config) : input, type = image ? 'image/webp' : contentTypes[kind];
+      if (row.purpose === 'avatar' && (!image || output.length > auth.config.MAX_AVATAR_BYTES)) throw new FileRejected('The processed avatar is too large or is not an image.');
       if (lost) throw new Error('Scan lease lost'); await storage.putApproved(job.candidateKey!, output, type); await this.afterApproved?.();
       await this.service.run(async session => {
         const current = await this.service.files().findOne({ _id: row._id, state: 'processing' }, { session }); if (!current || current.expiresAt <= new Date()) throw new FileRejected('This file expired or was removed.');
@@ -60,7 +61,7 @@ export class AttachmentWorker {
     if (!Number.isInteger(orphanGraceMs) || orphanGraceMs < 1000 || orphanGraceMs > 300000) throw new Error('Invalid orphan grace');
     const { db, storage, auth } = this.service; if (!await attachmentSchemaReady(db)) return;
     const now = new Date(), safeUpload = new Date(Date.now() - 60000), files = this.service.files(), jobs = db.collection<AttachmentJob>('attachmentJobs');
-    await files.updateMany({ messageId: null, $or: [{ state: 'pending', uploadExpiresAt: { $lt: safeUpload } }, { state: { $in: ['uploaded', 'processing', 'ready'] }, expiresAt: { $lte: now } }] }, { $set: { state: 'deleting', error: 'File expired.' } });
+    await files.updateMany({ messageId: null, $or: [{ state: 'pending', uploadExpiresAt: { $lt: safeUpload } }, { state: { $in: ['uploaded', 'processing', 'ready'] }, expiresAt: { $lte: now }, avatarActive: { $ne: true } }] }, { $set: { state: 'deleting', error: 'File expired.' } });
     const rows = await files.find({ $or: [{ state: { $in: ['rejected', 'deleting'] } }, { state: 'ready', sourceCleaned: false, uploadExpiresAt: { $lt: safeUpload } }] }).sort({ createdAt: 1 }).limit(20).toArray();
     for (const row of rows) {
       if (row.uploadExpiresAt >= safeUpload || await jobs.findOne({ _id: row._id, state: 'claimed', $expr: { $gt: ['$leaseUntil', '$$NOW'] } })) continue;

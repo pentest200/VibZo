@@ -24,6 +24,8 @@ export { FanoutWorker, syncChannel, parseFanout } from './sync/fanout.js';
 export type { Receipt, Reaction, SnapshotRecord, ReplayFloor } from './sync/model.js';
 
 export { AttachmentService } from './attachments/service.js';
+export { AvatarService } from './avatars/service.js';
+export { avatarSchemaReady } from './avatars/migrations.js';
 export { AttachmentWorker } from './attachments/worker.js';
 export { AttachmentStorage } from './attachments/storage.js';
 export { attachmentSchemaReady } from './attachments/migrations.js';

@@ -36,7 +36,9 @@
     "test:e2e:sync": "playwright test --config tests/e2e/sync.config.ts",
     "test:failure:gateway": "vitest run --config tests/integration/gateway.config.ts",
     "test:integration:attachments": "vitest run --config tests/integration/attachments.config.ts",
+    "test:integration:avatars": "vitest run --config tests/integration/avatars.config.ts",
     "test:e2e:attachments": "playwright test --config tests/e2e/attachments.config.ts",
+    "test:e2e:avatars": "playwright test --config tests/e2e/avatars.config.ts",
     "attachments:configure": "tsx scripts/configure-attachments.ts",
     "test:integration:safety": "vitest run --config tests/integration/safety.config.ts",
     "test:e2e:safety": "playwright test --config tests/e2e/safety.config.ts",
@@ -52,10 +54,14 @@
     "ops:recovery": "tsx scripts/recovery.ts",
     "test:restore": "vitest run --config tests/integration/restore.config.ts",
     "test:upgrade": "vitest run --config tests/integration/upgrade.config.ts",
-    "test:e2e:upgrade": "tsx scripts/test-upgrade-media.ts"
+    "test:e2e:upgrade": "tsx scripts/test-upgrade-media.ts",
+    "test:a11y": "playwright test --config tests/e2e/a11y.config.ts",
+    "test:e2e:journey": "tsx scripts/test-journey.ts",
+    "test:e2e": "tsx scripts/test-browser-gates.ts"
   },
   "devDependencies": {
     "@aws-sdk/client-s3": "3.1150.0",
+    "@axe-core/playwright": "4.14.0",
     "@chat/api": "workspace:*",
     "@chat/config": "workspace:*",
     "@chat/contracts": "workspace:*",

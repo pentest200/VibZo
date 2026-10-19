@@ -60,11 +60,11 @@ it('loads the actual prior compiled artifact and refuses production or restore-t
 it('overlaps old/new v1 writers through additive migration, retries and rollback without changing markers', async () => {
   const oldInput = command(group, 'Prior artifact message'), oldAccepted = await prior.request<AcceptedMessage>('send', { token: actor.token, command: oldInput });
   current = await start('.'); expect(current.identity.modulePath).not.toBe(prior.identity.modulePath); evidence['current'] = current.identity;
-  expect(await current.request('migrate')).toBe(8); const markers = await fingerprint();
+  expect(await current.request('migrate')).toBe(9); const markers = await fingerprint();
   const oldHttp = await prior.request<{ url: string; modulePath: string; sha256: string }>('http-start'), newHttp = await current.request<{ url: string; modulePath: string; sha256: string }>('http-start');
   expect(oldHttp.modulePath).toBe(await realpath(resolve(artifact.directory, 'apps/api/dist/app.js'))); expect(oldHttp.sha256).toBe(artifact.apiSha256); expect(oldHttp.modulePath).not.toBe(newHttp.modulePath);
   evidence['priorHttp'] = oldHttp; evidence['currentHttp'] = newHttp;
-  expect(await prior.request('migrate')).toBe(8); expect(await current.request('migrate')).toBe(8); expect(await fingerprint()).toBe(markers);
+  expect(await prior.request('migrate')).toBe(9); expect(await current.request('migrate')).toBe(9); expect(await fingerprint()).toBe(markers);
   expect(await current.request('send', { token: actor.token, command: oldInput })).toEqual(oldAccepted);
   const input = command(group, 'Concurrent cross-version command');
   const [oldResult, newResult] = await Promise.all([httpSend(oldHttp.url, input), httpSend(newHttp.url, input)]);
@@ -84,7 +84,7 @@ it('overlaps old/new v1 writers through additive migration, retries and rollback
   const oldRelay = await prior.hold('hold-confirm'); expect(oldRelay.data['eventId']).toBe(accepted.eventId); prior.release(); await oldRelay.completed;
   expect((await db.collection<OutboxRecord>('outbox').findOne({ _id: accepted.eventId }))?.traceparent).toBe(tracedRow!.traceparent);
   expect(await prior.request('send', { token: actor.token, command: fresh })).toEqual(accepted);
-  // This is an old-writer rollback on additive schema 008, without dropping fields/markers.
+  // Ordinary message rollback on additive 009; no avatar work is admitted to old workers.
   await prior.request('send', { token: actor.token, command: command(group, 'Rollback writer still accepted') });
   expect(await fingerprint()).toBe(markers);
 });

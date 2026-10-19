@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { AvatarImage } from './avatars.js';
 import type { FormEvent } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
@@ -47,20 +48,20 @@ function Chat({ account }: { account: AuthSession }) {
     setGroupCommand(crypto.randomUUID()); navigate(`/chat/${result.conversationId}`);
   }
   return <section className="chat"><div className="chat-heading"><div><span className="eyebrow">Your Commonroom</span><h1>Conversations</h1></div><Link to="/account">Account & privacy</Link></div>
-    <SyncStatus /><CallDock /><ErrorNotice error={error} /><p className="notice" role="status">{notice}</p>
+    <a className="secondary-link conversation-jump" href="#conversation-pane">Skip to conversation</a><SyncStatus /><CallDock /><ErrorNotice error={error} /><p className="notice" role="status">{notice}</p>
     <div className="chat-grid"><aside className="chat-sidebar" aria-label="Conversations and contacts">
       <section className="chat-section"><div className="section-heading"><h2>Your inbox</h2><button className="button-secondary" disabled={inbox.isFetching} onClick={() => { void inbox.refetch(); }}>Refresh inbox</button></div><p className="hint">Live updates with periodic recovery.</p>
         <ErrorNotice error={inbox.error} />{inbox.isPending && <p role="status">Loading inbox…</p>}
         {!inbox.isPending && !inbox.isError && !items.length && <p className="empty-copy">Your people will appear here. Find a contact or start a group below.</p>}
         <ul className="inbox-list">{items.map(item => <li key={item.id}>
           {item.state === 'invited' ? <div className="invitation"><strong>{item.title}</strong><p className="hint">Group invitation</p><div className="control-row"><button disabled={busy} onClick={() => act(async () => { await command(`/conversations/${item.id}/accept`); navigate(`/chat/${item.id}`); })}>Accept {item.title}</button><button className="button-secondary" disabled={busy} onClick={() => act(() => command(`/conversations/${item.id}/decline`))}>Decline {item.title}</button></div></div>
-            : <Link className={id === item.id ? 'inbox-link selected' : 'inbox-link'} aria-current={id === item.id ? 'page' : undefined} to={`/chat/${item.id}`}><span className="avatar" aria-hidden="true">{item.title.slice(0, 1).toUpperCase()}</span><span><strong>{item.title}</strong>{item.unread > 0 && <small aria-label={`${item.unread >= 1000 ? '1000+' : item.unread} unread messages`}>{item.unread >= 1000 ? '1000+' : item.unread} unread</small>}<small>{item.kind === 'group' ? `Group · ${item.role}` : 'Direct conversation'}</small></span></Link>}
+            : <Link className={id === item.id ? 'inbox-link selected' : 'inbox-link'} aria-current={id === item.id ? 'page' : undefined} to={`/chat/${item.id}`}>{item.otherUserId ? <AvatarImage account={account} userId={item.otherUserId} name={item.title} conversationId={item.id} /> : <span className="avatar" aria-hidden="true">{item.title.slice(0, 1).toUpperCase()}</span>}<span><strong>{item.title}</strong>{item.unread > 0 && <small aria-label={`${item.unread >= 1000 ? '1000+' : item.unread} unread messages`}>{item.unread >= 1000 ? '1000+' : item.unread} unread</small>}<small>{item.kind === 'group' ? `Group · ${item.role}` : 'Direct conversation'}</small></span></Link>}
         </li>)}</ul>{inboxPage > 0 && <button className="button-secondary" onClick={() => setInboxPage(inboxPage - 1)}>Previous conversations</button>}{(inboxPage + 1) * 50 < allItems.length && <button className="button-secondary" onClick={() => setInboxPage(inboxPage + 1)}>More conversations</button>}
       </section>
       <section className="chat-section"><h2>Find your people</h2><UserSearch userId={account.user.id} busy={busy} onSelect={user => act(async () => { const result = createdConversationSchema.parse(await command('/conversations/direct', 'POST', { targetUserId: user.id })); navigate(`/chat/${result.conversationId}`); })} label="Open conversation" /></section>
       <section className="chat-section"><h2>Start a group</h2><form onSubmit={event => act(() => createGroup(event))}><label className="field">Group name<input required maxLength={80} name="title" /></label><button disabled={busy}>Create group</button></form></section>
       <BlockList userId={account.user.id} busy={busy} command={command} act={act} />
-    </aside><div className="chat-main">{id ? <Selected key={`${account.user.id}:${id}`} id={id} account={account} command={command} busy={busy} act={act} /> : <section className="chat-welcome"><span className="brand-icon" aria-hidden="true">c.</span><h2>Make room for your people.</h2><p>Open a conversation or create a group to get started.</p><p className="hint">Send text and replies, manage invitations, and keep your people close. Voice and video calls are available when calling is enabled.</p></section>}</div></div></section>;
+    </aside><div className="chat-main" id="conversation-pane" tabIndex={-1}>{id ? <Selected key={`${account.user.id}:${id}`} id={id} account={account} command={command} busy={busy} act={act} /> : <section className="chat-welcome"><span className="brand-icon" aria-hidden="true">c.</span><h2>Make room for your people.</h2><p>Open a conversation or create a group to get started.</p><p className="hint">Send text and replies, manage invitations, and keep your people close. Voice and video calls are available when calling is enabled.</p></section>}</div></div></section>;
 }
 function UserSearch({ userId, busy, onSelect, label }: { userId: string; busy: boolean; onSelect: (user: PublicUser) => void; label: string }) {
   const [prefix, setPrefix] = useState(''); const [error, setError] = useState('');
@@ -90,7 +91,7 @@ function ConversationPanel({ conversation: c, account, command, busy, act }: { c
   const [reply, setReply] = useState<ReplyTarget | null>(null); const engine = useSyncEngine();
   useEffect(() => { engine.select(c.id); }, [engine, c.id]);
   function reviewed(message: string, operation: () => Promise<unknown>) { if (window.confirm(message)) act(operation); }
-  return <><div className="conversation-heading"><span className="eyebrow">{c.kind === 'group' ? 'Group conversation' : 'Direct conversation'}</span><h2>{c.title}</h2><p className="hint">{c.members.filter(member => member.state === 'active').length} members{c.kind === 'group' ? ` · You are ${c.role}` : ''}</p></div>
+  return <><div className="conversation-heading"><span className="eyebrow">{c.kind === 'group' ? 'Group conversation' : 'Direct conversation'}</span><h2>{c.title}</h2><div className="conversation-avatars" role="group" aria-label="Conversation avatars">{c.members.filter(member => member.state === 'active' && member.user.id !== account.user.id).map(member => <AvatarImage key={member.user.id} account={account} userId={member.user.id} name={member.user.displayName} conversationId={c.id} />)}</div><p className="hint">{c.members.filter(member => member.state === 'active').length} members{c.kind === 'group' ? ` · You are ${c.role}` : ''}</p></div>
     <SyncedHistory conversation={c} account={account} onReply={setReply} />
     {!c.blocked && <MessageComposer key={c.id} id={c.id} account={account} reply={reply} clearReply={() => setReply(null)} />}
     <div className="chat-section"><CallLauncher conversationId={c.id} blocked={c.blocked} />{c.blocked && <p className="notice">New direct contact is unavailable. Previously visible history remains accessible.</p>}

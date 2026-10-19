@@ -21,4 +21,5 @@ export interface MessageRecord { _id: string; schemaVersion: 1; conversationId: 
 export interface CreateCommand { _id: string; schemaVersion: 1; userId: string; clientCommandId: string; digest: string; conversationId: string; createdAt: Date }
 export const pairId = (a: string, b: string) => [a,b].sort().join(':');
 export const membershipId = (conversationId: string, userId: string) => `${conversationId}:${userId}`;
-export function publicUser(user: UserRecord): PublicUser { return { id: user._id, username: user.usernameCanonical, displayName: user.displayName, avatarId: user.avatarId }; }
+// Avatar existence/identity stays private; contextual image grants authorize by user ID.
+export function publicUser(user: UserRecord): PublicUser { return { id: user._id, username: user.usernameCanonical, displayName: user.displayName, avatarId: null }; }

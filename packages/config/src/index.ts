@@ -55,6 +55,8 @@ const schema = z.object({
   MAX_MESSAGE_CODEPOINTS: integer(4000, 4000), MAX_GROUP_MEMBERS: integer(50, 50),
   MAX_CONVERSATIONS_PER_USER: integer(500, 1000), MAX_BLOCKS_PER_USER: integer(500, 1000), GROUP_INVITATION_HOURS: integer(72, 168),
   MAX_ATTACHMENTS: integer(8, 8), MAX_ATTACHMENT_BYTES: integer(26214400, 26214400),
+  MAX_AVATAR_BYTES: integer(5242880, 5242880),
+  AVATAR_DOWNLOAD_RATE_LIMIT: integer(360, 600),
   ALLOWED_ATTACHMENT_TYPES: z.string().default('jpeg,png,webp,pdf,text').transform(value => value.split(','))
     .refine(types => types.length > 0 && new Set(types).size === types.length && types.every(type => ['jpeg', 'png', 'webp', 'pdf', 'text'].includes(type)), 'Unsupported attachment allowlist'),
   MAX_ACCOUNT_ATTACHMENT_BYTES: integer(1073741824, 1073741824), MAX_SESSIONS: integer(10, 10),

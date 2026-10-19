@@ -5,7 +5,7 @@ permissions:
 jobs:
   foundation:
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45 # Sequential real-service recovery and avatar/browser gates plus cold setup.
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -33,6 +33,7 @@ jobs:
       - run: pnpm test:failure:outbox
       - run: pnpm infra:scanner
       - run: pnpm test:integration:attachments
+      - run: pnpm test:integration:avatars
       - run: pnpm test:integration:safety
       - run: pnpm infra:media
       - run: pnpm test:integration:calls
@@ -46,6 +47,9 @@ jobs:
       - run: pnpm test:failure:dependencies
       - run: pnpm test:integration:e2e-lifecycle
       - run: pnpm exec playwright install --with-deps chromium
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: .cache/ms-playwright
+      - run: pnpm test:a11y
         env:
           PLAYWRIGHT_BROWSERS_PATH: .cache/ms-playwright
       - run: pnpm test:e2e:auth
@@ -63,7 +67,13 @@ jobs:
       - run: pnpm test:e2e:attachments
         env:
           PLAYWRIGHT_BROWSERS_PATH: .cache/ms-playwright
+      - run: pnpm test:e2e:avatars
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: .cache/ms-playwright
       - run: pnpm test:e2e:safety
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: .cache/ms-playwright
+      - run: pnpm test:e2e:journey
         env:
           PLAYWRIGHT_BROWSERS_PATH: .cache/ms-playwright
       - run: pnpm test:e2e:upgrade

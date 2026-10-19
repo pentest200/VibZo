@@ -33,5 +33,10 @@ export class AttachmentStorage {
     const name = row.name.replace(/[^a-zA-Z0-9._ -]/g, '_'), encoded = encodeURIComponent(row.name).replace(/['()*]/g, char => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
     return { url: await getSignedUrl(this.client, new GetObjectCommand({ Bucket: this.config.S3_APPROVED_BUCKET, Key: row.approvedKey, ResponseContentType: row.approvedType, ResponseContentDisposition: `attachment; filename="${name}"; filename*=UTF-8''${encoded}`, ResponseCacheControl: 'private, no-store' }), { expiresIn: this.config.DOWNLOAD_URL_SECONDS }), expiresAt: new Date(Date.now() + this.config.DOWNLOAD_URL_SECONDS * 1000).toISOString() };
   }
+  async avatarDownload(row: AttachmentRecord) {
+    if (!row.approvedKey || row.purpose !== 'avatar' || row.approvedType !== 'image/webp') throw new Error('Missing approved avatar');
+    const seconds = Math.min(30, this.config.DOWNLOAD_URL_SECONDS);
+    return { url: await getSignedUrl(this.client, new GetObjectCommand({ Bucket: this.config.S3_APPROVED_BUCKET, Key: row.approvedKey, ResponseContentType: 'image/webp', ResponseContentDisposition: 'inline', ResponseCacheControl: 'private, no-store' }), { expiresIn: seconds }), expiresAt: new Date(Date.now() + seconds * 1000).toISOString() };
+  }
   close() { this.client.destroy(); }
 }

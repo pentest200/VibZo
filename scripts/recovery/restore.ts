@@ -5,7 +5,7 @@ import type { Config } from '@chat/config';
 import { createMongoClient } from '@chat/domain';
 import type { AttachmentRecord } from '@chat/domain';
 import { inspectBundle, RecoveryError } from './bundle.js';
-import { assertLocal, canonical, catalog, mongoContainer, parse, privatePath, tool } from './runtime.js';
+import { assertLocal, canonical, catalog, mongoContainer, parse, privatePath, tool, supportedMarkers } from './runtime.js';
 import type { Catalog } from './runtime.js';
 import { storage } from './capture.js';
 import { loadPolicy, sanitize } from './policy.js';
@@ -21,7 +21,7 @@ export async function restoreSnapshot(config: Config, snapshotPath: string, poli
   const meta = manifest.detail['catalog'] as Catalog[], objects = manifest.detail['objects'] as ObjectEntry[];
   if (!Array.isArray(meta) || !Array.isArray(objects) || objects.length > 128 || manifest.entries[0]?.name !== 'database' || manifest.entries.length !== objects.length + 1 || objects.some((object, i) => !object || object.entry !== manifest.entries[i + 1]?.name || object.bytes !== manifest.entries[i + 1]?.bytes || object.sha256 !== manifest.entries[i + 1]?.sha256 || !object.key.startsWith(manifest.source + '/') || object.bytes > config.MAX_ATTACHMENT_BYTES)) throw new RecoveryError('Snapshot inventory is inconsistent');
   const markers = parse<{ _id: string; appliedAt: Date }[]>(String(manifest.detail['markers']));
-  if (!Array.isArray(markers) || markers.length !== 8 || markers.at(-1)?._id !== '008_operations') throw new RecoveryError('Snapshot schema is unsupported');
+  if (!supportedMarkers(markers)) throw new RecoveryError('Snapshot schema is unsupported');
   const client = createMongoClient(config), s3 = storage(config), owner = randomUUID(); let claimed = false, dump: ReturnType<typeof tool> | undefined, stream: PassThrough | undefined, upload: Promise<unknown> | undefined, uploadError: unknown;
   const db = client.db(target);
   try {

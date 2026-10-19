@@ -85,7 +85,7 @@ it('keeps traces out of old-schema writes and permits old v1 rows after additive
   const source = (await f.db.collection<OutboxRecord>('outbox').findOne({ _id: old.eventId }))!;
   await f.db.collection<OutboxRecord>('outbox').insertOne({ ...source, _id: randomUUID(), eventId: randomUUID() });
   await expect(f.db.collection<OutboxRecord>('outbox').updateOne({ _id: old.eventId }, { $set: { traceparent: 'body-or-invalid-parent' } })).rejects.toMatchObject({ code: 121 });
-  expect(await f.db.collection('schemaMigrations').countDocuments()).toBe(8);
+  expect(await f.db.collection('schemaMigrations').countDocuments()).toBe(9);
 });
 
 it('preserves safe context through actual broker retry and dead-letter handoffs', async () => {

@@ -15,9 +15,9 @@ import { AttachmentStorage } from './storage.js';
 import { quota, scheduleScan } from './store.js';
 export class AttachmentService extends ConversationService {
   readonly storage: AttachmentStorage;
-  constructor(auth: AuthService) { super(auth); this.storage = new AttachmentStorage(auth.config); }
+  constructor(auth: AuthService, readonly purpose: 'message' | 'avatar' = 'message') { super(auth); this.storage = new AttachmentStorage(auth.config); }
   files() { return this.db.collection<AttachmentRecord>('attachments'); }
-  private async ready() { if (!await attachmentSchemaReady(this.db)) throw unavailable(); }
+  protected async ready() { if (!await attachmentSchemaReady(this.db)) throw unavailable(); }
   private async command(userId: string, id: string, input: unknown, session: ClientSession) {
     const digest = tokenHash(JSON.stringify(input)), previous = await this.db.collection<AttachmentCommand>('attachmentCommands').findOne({ _id: `${userId}:${id}` }, { session });
     if (previous && previous.digest !== digest) throw conflict('This file action ID was used with different content.'); return { digest, previous };
@@ -42,9 +42,11 @@ export class AttachmentService extends ConversationService {
     if (row.state !== 'pending' || row.uploadExpiresAt <= new Date()) throw conflict('This upload is no longer pending. Refresh the file list.');
     return { attachment: attachmentView(row), ...await this.storage.upload(row) };
   }
-  private async own(token: string | undefined, id: string, session: ClientSession) {
+  protected async own(token: string | undefined, id: string, session: ClientSession) {
     const row = await this.files().findOne({ _id: id }, { session }); if (!row) throw denied();
-    const ctx = await this.authorize(token, row.conversationId, session, 'write'); if (ctx.principal.user._id !== row.ownerId) throw denied(); return { row, ctx };
+    if ((row.purpose === 'avatar') !== (this.purpose === 'avatar')) throw denied();
+    const principal = this.purpose === 'avatar' ? await this.actor(token, session) : (await this.authorize(token, row.conversationId!, session, 'write')).principal;
+    if (principal.user._id !== row.ownerId) throw denied(); return { row, ctx: { principal } };
   }
   async finalize(token: string | undefined, id: string, commandId: string) {
     await this.ready();
@@ -81,13 +83,14 @@ export class AttachmentService extends ConversationService {
   async list(token: string | undefined, conversationId: string) {
     await this.ready(); return this.run(async session => {
       const ctx = await this.authorize(token, conversationId, session, 'write');
-      const rows = await this.files().find({ conversationId, ownerId: ctx.principal.user._id, messageId: null, state: { $ne: 'deleted' } }, { session }).sort({ createdAt: 1 }).limit(100).toArray(); return { items: rows.map(attachmentView) };
+      const rows = await this.files().find({ conversationId, purpose: { $ne: 'avatar' }, ownerId: ctx.principal.user._id, messageId: null, state: { $ne: 'deleted' } }, { session }).sort({ createdAt: 1 }).limit(100).toArray(); return { items: rows.map(attachmentView) };
     });
   }
   async removeFile(token: string | undefined, id: string, commandId: string) {
     await this.ready(); return this.run(async session => {
       const { row } = await this.own(token, id, session), check = await this.command(row.ownerId, commandId, { kind: 'delete', id }, session);
       if (!check.previous) {
+        if (row.avatarActive) throw conflict('Remove the current avatar through profile settings.');
         if (row.messageId) throw conflict('Delete the message to remove its files.');
         if (row.state !== 'deleted') await this.files().updateOne({ _id: id }, { $set: { state: 'deleting' } }, { session });
         await this.remember(row.ownerId, commandId, check.digest, id, session);
@@ -96,7 +99,7 @@ export class AttachmentService extends ConversationService {
   }
   async download(token: string | undefined, id: string) {
     await this.ready(); const row = await this.run(async session => {
-      const row = await this.files().findOne({ _id: id, state: 'ready' }, { session }); if (!row) throw denied();
+      const row = await this.files().findOne({ _id: id, state: 'ready', purpose: { $ne: 'avatar' } }, { session }); if (!row || !row.conversationId) throw denied();
       const ctx = await this.authorize(token, row.conversationId, session, 'write');
       if (!await this.db.collection<UserRecord>('users').findOneAndUpdate({ _id: row.ownerId, deletionState: 'active' }, { $inc: { guardVersion: 1 } }, { session })) throw denied();
       if (!row.messageId) { if (ctx.principal.user._id !== row.ownerId || row.expiresAt <= new Date()) throw denied(); }

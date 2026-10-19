@@ -5,7 +5,7 @@ import { promisify } from 'node:util';
 import { Long } from 'mongodb';
 import { beforeAll, afterAll, expect, it } from 'vitest';
 import { createApi } from '@chat/api';
-import { AuthService, AttachmentService, AttachmentStorage, AttachmentWorker, CallService, CallWorker, SyncService, SafetyService, BrokerTransport, OutboxRelay, EventConsumer, FanoutWorker, recoveryReady, runMigrations, unseal } from '@chat/domain';
+import { AuthService, AvatarService, avatarSchemaReady, AttachmentService, AttachmentStorage, AttachmentWorker, CallService, CallWorker, SyncService, SafetyService, BrokerTransport, OutboxRelay, EventConsumer, FanoutWorker, recoveryReady, runMigrations, unseal } from '@chat/domain';
 import type { AttachmentRecord, EmailJobRecord, OutboxRecord, MessageRecord, ConversationRecord } from '@chat/domain';
 import { captureSnapshot, capturePolicy } from '../../scripts/recovery/capture.js';
 import { restoreSnapshot } from '../../scripts/recovery/restore.js';
@@ -13,11 +13,21 @@ import { createBundle, inspectBundle, one } from '../../scripts/recovery/bundle.
 import type { BundleManifest } from '../../scripts/recovery/bundle.js';
 import { messagingFixture, command } from './messaging-fixture.js';
 import { roleProcess, reservePort } from './telemetry-fixture.js';
+import { png } from '../fixtures/png.js';
+import { migrateAuth } from '../../packages/domain/src/auth/migrations.js';
+import { migrateConversations } from '../../packages/domain/src/conversations/migrations.js';
+import { migrateMessaging } from '../../packages/domain/src/messaging/migrations.js';
+import { migrateSync } from '../../packages/domain/src/sync/migrations.js';
+import { migrateAttachments } from '../../packages/domain/src/attachments/migrations.js';
+import { migrateSafety } from '../../packages/domain/src/safety/migrations.js';
+import { migrateCalls } from '../../packages/domain/src/calls/migrations.js';
+import { migrateOperations } from '../../packages/domain/src/operations/migrations.js';
 
 let f: Awaited<ReturnType<typeof messagingFixture>>, files: AttachmentService, sync: SyncService, calls: CallService;
 type User = Awaited<ReturnType<typeof f.user>>;
 let owner: User, peer: User, removed: User, outsider: User, deleting: User, group: string, callId: string;
 let keepId: string, eraseId: string, keepCommand: Omit<ReturnType<typeof command>, 'attachmentIds'> & { attachmentIds: string[] }, eraseCommand: typeof keepCommand, accepted: Awaited<ReturnType<SyncService['send']>>, erased: typeof accepted;
+let avatarId: string;
 let original: BundleManifest, target: string, targetAuth: AuthService, targetSync: SyncService;
 const key = randomBytes(32), directory = `.cache/recovery-drill-${randomUUID()}`, snapshot = directory + '/snapshot.crb', policy = directory + '/policy.crb', targets = new Set<string>(), metrics: Record<string, number> = {};
 const snapshots = new Set<string>(), execute = promisify(execFile);
@@ -37,6 +47,13 @@ beforeAll(async () => {
     expect((await files.files().findOne({ _id: ticket.attachment.id }))?.state).toBe('ready'); return ticket.attachment.id;
   }
   keepId = await attachment('kept'); eraseId = await attachment('removed');
+  const avatars = new AvatarService(f.auth), image = png();
+  try {
+    const ticket = await avatars.reserve(owner.token, { commandId: randomUUID(), name: 'recovery-avatar.png', kind: 'png', size: image.length, sha256: createHash('sha256').update(image).digest('hex') });
+    expect((await fetch(ticket.url, { method: 'PUT', headers: ticket.headers, body: image })).status).toBe(200); avatarId = ticket.attachment.id;
+    await avatars.finalize(owner.token, avatarId, randomUUID()); await new AttachmentWorker(files).runOnce();
+    await avatars.publish(owner.token, { commandId: randomUUID(), avatarId, expectedAvatarId: null }); await avatars.visibility(owner.token, { commandId: randomUUID(), visibility: 'conversations' });
+  } finally { avatars.close(); }
   keepCommand = { ...command(group, 'PRIVATE_BACKUP_MESSAGE_08C'), attachmentIds: [keepId] }; accepted = await sync.send(owner.token, keepCommand);
   eraseCommand = { ...command(group, 'PRIVATE_CURRENT_DELETION_08C'), attachmentIds: [eraseId] }; erased = await sync.send(owner.token, eraseCommand);
   await sync.send(deleting.token, command(group, 'PRIVATE_DELETED_ACCOUNT_08C'));
@@ -76,7 +93,7 @@ async function reset(user: User) {
 }
 
 it('captures actual Mongo archives and approved bytes encrypted without writing plaintext artifacts', async () => {
-  expect(original.entries.map(entry => entry.name)).toEqual(['database', 'object_0', 'object_1']); expect(original.entries[0]!.bytes).toBeGreaterThan(1000);
+  expect(original.entries.map(entry => entry.name)).toEqual(['database', 'object_0', 'object_1', 'object_2']); expect(original.entries[0]!.bytes).toBeGreaterThan(1000);
   for (const path of [snapshot, policy]) { const encrypted = await readFile(path); for (const secret of ['PRIVATE_BACKUP_MESSAGE_08C', owner.token, owner.email, bytes.toString()]) expect(encrypted.includes(Buffer.from(secret))).toBe(false); }
 });
 it('rejects a real transaction during capture and deletes only its incomplete encrypted output', async () => {
@@ -101,8 +118,8 @@ it('restores through the real tool while auth, readiness, old claims and migrati
     const port = await reservePort(), process = await roleProcess('worker', { MONGODB_DATABASE: target, SMTP_PORT: '1' }, port);
     try { expect((await fetch(process.url + '/health/ready')).status).toBe(503); expect((await db.collection<OutboxRecord>('outbox').findOne({ _id: accepted.eventId }))?.leaseOwner).toBe('stopped-source-worker'); } finally { await process.close(); }
   }); metrics['restoreMs'] = performance.now() - start; expect(loaded).toBe(true);
-  expect(await recoveryReady(f.client.db(target))).toBe(true); expect(await f.client.db(target).collection('schemaMigrations').countDocuments()).toBe(8);
-  await runMigrations(f.client.db(target)); expect(await f.client.db(target).collection('schemaMigrations').countDocuments()).toBe(8);
+  expect(await recoveryReady(f.client.db(target))).toBe(true); expect(await f.client.db(target).collection('schemaMigrations').countDocuments()).toBe(9);
+  await runMigrations(f.client.db(target)); expect(await f.client.db(target).collection('schemaMigrations').countDocuments()).toBe(9);
   targetAuth = new AuthService(config, f.client, f.client.db(target)); await targetAuth.initialize(); targetSync = new SyncService(targetAuth);
   const indexes = await targetAuth.db.collection('messageCommands').listIndexes().toArray(); expect(indexes.some(index => index.unique && index.key['clientMessageId'] === 1)).toBe(true);
   await expect(targetAuth.db.collection('messages').insertOne({ invalid: true })).rejects.toMatchObject({ code: 121 });
@@ -143,6 +160,27 @@ async function rewrite(source: string, destination: string, change: (manifest: B
   const meta = await inspectBundle(source, key, { async begin(name) { active = name; entries.set(name, []); }, async data(bytes) { entries.get(active)!.push(bytes); }, async end() {} }); change(meta);
   const rewritten = await createBundle(destination, key, { kind: meta.kind, source: meta.source, capturedAt: meta.capturedAt, detail: meta.detail }, async add => { for (const [name, parts] of entries) if (name !== omit) await add(name, one(Buffer.concat(parts))); }); if (rewritten.kind === 'snapshot') snapshots.add(rewritten.id); return rewritten;
 }
+it('retires approved avatars and sharing through actual encrypted restore without changing source authority', async () => {
+  expect((await files.files().findOne({ _id: avatarId }))?.avatarActive).toBe(true);
+  expect((await targetAuth.db.collection<{ _id: string; avatarId: string | null }>('users').findOne({ _id: owner.id }))?.avatarId).toBeNull();
+  expect(await targetAuth.db.collection<{ _id: string; visibility: string }>('avatarSettings').findOne({ _id: owner.id })).toMatchObject({ visibility: 'self' });
+  expect(await targetAuth.db.collection<AttachmentRecord>('attachments').findOne({ _id: avatarId })).toMatchObject({ state: 'deleted', approvedKey: null, reservedBytes: 0 });
+});
+it('restores a real schema-008 archive and enables avatars only after additive 009 migration', async () => {
+  const legacy = `recovery_test_${randomUUID().replaceAll('-', '')}`, db = f.client.db(legacy), config = { ...f.config, MONGODB_DATABASE: legacy };
+  if (await db.listCollections().hasNext()) throw new Error('Occupied historical recovery fixture');
+  try {
+    // Materialize exact immutable 001-008 validators/indexes, not a forged 009 manifest.
+    await migrateAuth(db); const assertOwned = async () => { if (db.databaseName !== legacy || !/^recovery_test_[a-f0-9]{32}$/.test(legacy)) throw new Error('Foreign historical fixture'); };
+    for (const migrate of [migrateConversations, migrateMessaging, migrateSync, migrateAttachments, migrateSafety, migrateCalls, migrateOperations]) await migrate(db, assertOwned);
+    const saved = directory + '/legacy008.crb', authority = directory + '/legacy008-policy.crb';
+    const snapshot = await captureSnapshot(config, saved, key); snapshots.add(snapshot.id); await capturePolicy(config, saved, authority, key);
+    const restored = newTarget(); await restoreSnapshot(config, saved, authority, key, restored); const target = f.client.db(restored);
+    expect(await avatarSchemaReady(target)).toBe(false); const markers = await target.collection('schemaMigrations').find().sort({ _id: 1 }).toArray(); expect(markers).toHaveLength(8);
+    await runMigrations(target); expect(await avatarSchemaReady(target)).toBe(true);
+    expect((await target.collection('schemaMigrations').find().sort({ _id: 1 }).toArray()).slice(0, 8)).toEqual(markers);
+  } finally { await db.dropDatabase(); }
+});
 it('rejects stale and foreign policy bundles without creating a target', async () => {
   for (const mode of ['stale', 'foreign']) { const file = `${directory}/${mode}.crb`; await rewrite(policy, file, manifest => { if (mode === 'stale') manifest.capturedAt = new Date(Date.now() - 7200000).toISOString(); else manifest.detail['snapshotId'] = 'f'.repeat(32); }); const name = newTarget(); await expect(restoreSnapshot(f.config, snapshot, file, key, name)).rejects.toThrow('matching current policy'); expect(await f.client.db(name).listCollections().hasNext()).toBe(false); }
 });

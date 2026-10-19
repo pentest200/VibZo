@@ -129,6 +129,7 @@ export class SafetyService extends ConversationStore {
       await this.db.collection('sessions').updateMany({ userId: id }, { $set: { revokedAt: now } }, { session });
       await this.db.collection('pushSubscriptions').deleteMany({ userId: id }, { session });
       await this.db.collection<NotificationPreference>('notificationPreferences').deleteOne({ _id: id }, { session });
+      await this.db.collection<Document & { _id: string }>('avatarSettings').deleteOne({ _id: id }, { session });
       await this.db.collection('authTokens').deleteMany({ userId: id }, { session });
       await this.db.collection('authEmailJobs').updateMany({ userId: id }, { $set: { state: 'dead', encryptedPayload: null, leaseOwner: null, completedAt: now } }, { session });
       await this.db.collection('syncSnapshots').deleteMany({ userId: id }, { session });

@@ -11,6 +11,8 @@ export async function quota(db: Db, userId: string, session: ClientSession) {
 }
 export async function ownerAuthority(service: ConversationStore, row: AttachmentRecord, session: ClientSession) {
   const user = await service.db.collection<UserRecord>('users').findOneAndUpdate({ _id: row.ownerId, deletionState: 'active', verifiedAt: { $ne: null } }, { $inc: { guardVersion: 1 } }, { session, returnDocument: 'after' });
+  if (row.purpose === 'avatar') { if (!user || row.conversationId !== null) throw denied(); return; }
+  if (!row.conversationId) throw denied();
   const conversation = await service.db.collection<ConversationRecord>('conversations').findOneAndUpdate({ _id: row.conversationId, state: 'active' }, { $inc: { guardVersion: 1 } }, { session, returnDocument: 'after' });
   const member = await service.db.collection<MembershipRecord>('memberships').findOneAndUpdate({ conversationId: row.conversationId, userId: row.ownerId, state: 'active' }, { $inc: { guardVersion: 1 } }, { session, returnDocument: 'after' });
   if (!user || !conversation || !member) throw denied();
@@ -19,7 +21,7 @@ export async function ownerAuthority(service: ConversationStore, row: Attachment
 export async function associateAttachments(db: Db, userId: string, conversationId: string, ids: string[], messageId: string, session: ClientSession) {
   if (new Set(ids).size !== ids.length) throw conflict('Choose each file only once.');
   for (const id of ids) {
-    const changed = await db.collection<AttachmentRecord>('attachments').updateOne({ _id: id, ownerId: userId, conversationId, state: 'ready', messageId: null, expiresAt: { $gt: new Date() } }, { $set: { messageId } }, { session });
+    const changed = await db.collection<AttachmentRecord>('attachments').updateOne({ _id: id, purpose: { $ne: 'avatar' }, ownerId: userId, conversationId, state: 'ready', messageId: null, expiresAt: { $gt: new Date() } }, { $set: { messageId } }, { session });
     if (!changed.matchedCount) throw conflict('A selected file is not ready or is no longer available.');
   }
 }

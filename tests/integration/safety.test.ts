@@ -29,7 +29,7 @@ async function intent(id: string, token: string, text = 'Private message that mu
 async function expand(worker: NotificationWorker) { for (let n = 0; n < 20 && await worker.expandOnce(); n++) { /* bounded drain */ } }
 it('applies additive 006 repeatedly without replacing previous validators or accounts', async () => {
   const a = await f.user('migrate'); await runMigrations(f.db);
-  expect(await f.db.collection('schemaMigrations').countDocuments()).toBe(8);
+  expect(await f.db.collection('schemaMigrations').countDocuments()).toBe(9);
   expect((await f.auth.current(a.token)).user.id).toBe(a.id);
   await expect(f.db.collection('pushSubscriptions').insertOne({ endpoint: 'unvalidated' })).rejects.toMatchObject({ code: 121 });
 });

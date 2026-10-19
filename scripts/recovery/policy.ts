@@ -26,7 +26,7 @@ export async function sanitize(client: MongoClient, db: Db, config: Config, poli
     const latest = current.get(user._id); if (!latest) throw new RecoveryError('Current account authority is missing');
     const state = latest.deletionState === 'active' && user.deletionState === 'active' ? 'active' : 'deleted';
     if (state !== 'active') deleted.add(user._id);
-    const safe: UserRecord = { ...latest, _id: user._id, passwordHash: '', authVersion: Math.max(Number(user.authVersion), Number(latest.authVersion)) + 1, guardVersion: Number(latest.guardVersion) + 1, updatedAt: now, deletionState: state };
+    const safe: UserRecord = { ...latest, _id: user._id, avatarId: null, passwordHash: '', authVersion: Math.max(Number(user.authVersion), Number(latest.authVersion)) + 1, guardVersion: Number(latest.guardVersion) + 1, updatedAt: now, deletionState: state };
     if (state !== 'active') Object.assign(safe, { emailCanonical: `${user._id}@deleted.invalid`, usernameCanonical: `deleted_${user._id.replaceAll('-', '').slice(0, 16)}`, displayName: 'Deleted account', verifiedAt: null, avatarId: null, role: 'user', privacy: { allowSearch: false, showPresence: false } });
     await users.replaceOne({ _id: user._id }, safe);
   }
@@ -78,11 +78,12 @@ export async function sanitize(client: MongoClient, db: Db, config: Config, poli
   const files = new Map(policy.attachments.map(row => [String(row['_id']), row as AttachmentRecord]));
   for await (const row of db.collection<AttachmentRecord>('attachments').find()) {
     const latest = files.get(row._id);
-    if (row.state !== 'ready' || !latest || latest.state !== 'ready' || deleted.has(row.ownerId) || !!row.messageId && tombstones.has(row.messageId)) {
+    if (row.purpose === 'avatar' || row.state !== 'ready' || !latest || latest.state !== 'ready' || deleted.has(row.ownerId) || !!row.messageId && tombstones.has(row.messageId)) {
       await db.collection<AttachmentRecord>('attachments').updateOne({ _id: row._id }, { $set: { state: 'deleted', name: 'Deleted file', approvedKey: null, approvedSha256: null, approvedSize: 0, approvedType: null, reservedBytes: 0, sha256: '', sourceKey: `${db.databaseName}/retired/${row._id}`, sourceCleaned: true, error: 'Retired during recovery.' } });
     } else if (row.approvedKey !== latest.approvedKey || row.approvedSha256 !== latest.approvedSha256) throw new RecoveryError('Current immutable object authority differs');
   }
   for (const name of ['sessions', 'authTokens', 'pushSubscriptions', 'syncSnapshots', 'callWebhookInbox']) await db.collection(name).deleteMany({});
+  await db.collection('avatarSettings').updateMany({}, { $set: { visibility: 'self' } });
   await db.collection('authEmailJobs').updateMany({}, { $set: { state: 'dead', encryptedPayload: null, leaseOwner: null, leaseUntil: new Date(0), completedAt: now } });
   await db.collection('pushJobs').updateMany({}, { $set: { state: 'skipped', outcome: 'RESTORE_SUPPRESSED', leaseOwner: null, leaseUntil: new Date(0) } });
   await db.collection('notificationJobs').updateMany({}, { $set: { state: 'published' } });

@@ -20,6 +20,7 @@
     "infra:scanner": "tsx scripts/infra.ts scanner",
     "test:integration:foundation": "vitest run --config tests/integration/vitest.config.ts",
     "test:foundation:http": "vitest run --config tests/http/vitest.config.ts",
+    "test:integration:e2e-lifecycle": "vitest run --config tests/integration/e2e-lifecycle.config.ts",
     "db:migrate": "tsx scripts/migrate.ts",
     "auth:benchmark": "tsx scripts/auth-benchmark.ts",
     "seed:development": "tsx scripts/seed-development.ts",
@@ -49,7 +50,9 @@
     "ops:telemetry": "tsx scripts/telemetry-agent.ts",
     "test:failure:dependencies": "vitest run --config tests/integration/dependencies.config.ts",
     "ops:recovery": "tsx scripts/recovery.ts",
-    "test:restore": "vitest run --config tests/integration/restore.config.ts"
+    "test:restore": "vitest run --config tests/integration/restore.config.ts",
+    "test:upgrade": "vitest run --config tests/integration/upgrade.config.ts",
+    "test:e2e:upgrade": "tsx scripts/test-upgrade-media.ts"
   },
   "devDependencies": {
     "@aws-sdk/client-s3": "3.1150.0",

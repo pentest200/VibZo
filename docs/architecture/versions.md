@@ -1,5 +1,7 @@
 # Versions and decisions
 
+Current local verification uses Node 24.21.0 and pnpm 12.11.2. Historical bootstrap notes below are superseded by the Phase 07 runtime requirement. Real ClamAV/image processing and LiveKit checks are recorded in [Phase 05](../phase-05-evidence.md) and [Phase 07](../phase-07-evidence.md). Phase 08 adds the actual tracing SDK/exporter and pinned private telemetry runtime; see [operations](../runbooks/operations.md) and [Phase 08 evidence](../phase-08-evidence.md) for executed scope. These local results do not certify production deployment or image security.
+
 Queried official npm registry and official project references on 2026-10-13. Exact direct pins live in package manifests and transitive resolution/integrities in `pnpm-lock.yaml`; do not change versions from memory.
 
 - pnpm 12.11.2 current native release; host Node 22.15.0 satisfies bootstrap/runtime engines. CI target Node 24.21.0 LTS. https://pnpm.io/installation ; https://nodejs.org/en/about/previous-releases

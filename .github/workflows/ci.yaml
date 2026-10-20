@@ -23,6 +23,7 @@ jobs:
       - run: pnpm test:load:harness
       - run: pnpm test:foundation:http
       - run: pnpm infra:config
+      - run: pnpm test:integration:infra
       - run: pnpm infra:up
       - run: pnpm test:integration:foundation
       - run: pnpm db:migrate
@@ -83,6 +84,8 @@ jobs:
       - run: npm audit --omit=dev --audit-level=high
         working-directory: infra/processor
       - run: pnpm audit --prod --audit-level high
+      - if: failure()
+        run: pnpm exec tsx scripts/infra.ts diagnose
       - if: failure()
         run: docker --config .cache/docker compose -f infra/compose/compose.yaml logs --tail 100
       - if: always()

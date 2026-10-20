@@ -19,6 +19,7 @@
     "infra:media": "tsx scripts/infra.ts media",
     "infra:scanner": "tsx scripts/infra.ts scanner",
     "test:integration:foundation": "vitest run --config tests/integration/vitest.config.ts",
+    "test:integration:infra": "vitest run --config tests/integration/infra-startup.config.ts",
     "test:foundation:http": "vitest run --config tests/http/vitest.config.ts",
     "test:integration:e2e-lifecycle": "vitest run --config tests/integration/e2e-lifecycle.config.ts",
     "db:migrate": "tsx scripts/migrate.ts",

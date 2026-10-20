@@ -7,10 +7,12 @@ services:
     ports: ['127.0.0.1:27017:27017']
     volumes: [mongo-data:/data/db]
     healthcheck:
-      # Idempotent dev-only initialization; health requires writable primary, not merely TCP.
-      test: ['CMD', 'mongosh', '--quiet', '--eval', 'try { rs.status() } catch (e) { if (e.codeName === "NotYetInitialized") rs.initiate({_id:"rs0",members:[{_id:0,host:"mongo:27017"}]}); else throw e; } if (!db.hello().isWritablePrimary) quit(1);']
+      # Idempotent dev-only initialization; require the expected writable replica set.
+      # mongosh itself can exceed 5s on a contended cold CI runner. Keep the
+      # overall infra:up deadline at 240s; bound shell connection attempts too.
+      test: ['CMD', 'mongosh', '--norc', '--quiet', 'mongodb://127.0.0.1:27017/admin?directConnection=true&serverSelectionTimeoutMS=2000&connectTimeoutMS=2000', '--eval', 'try { const status = rs.status(); if (status.set !== "rs0") quit(1); } catch (e) { if (e.codeName === "NotYetInitialized" || e.code === 94) { const initialized = rs.initiate({_id:"rs0",members:[{_id:0,host:"mongo:27017"}]}); if (initialized.ok !== 1) quit(1); } else throw e; } const hello = db.adminCommand({hello:1}); if (hello.setName !== "rs0" || hello.isWritablePrimary !== true) quit(1);']
       interval: 5s
-      timeout: 5s
+      timeout: 20s
       retries: 30
       start_period: 10s
     restart: unless-stopped

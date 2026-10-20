@@ -1,4 +1,5 @@
-import { spawn } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
+import { promisify } from 'node:util';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { resolve, join, dirname } from 'node:path';
 
@@ -13,18 +14,35 @@ if (process.platform === 'win32') {
   }
 }
 const base = ['--config', configDirectory, 'compose', '-f', 'infra/compose/compose.yaml'];
+const execute = promisify(execFile);
+async function diagnose() {
+  // State/health only: never dump Config.Env or Docker's credential settings.
+  // Inspection is bounded and must not mask the original startup failure.
+  try {
+    const result = await execute('docker', [...base, 'ps', '--all', '--quiet'], { windowsHide: true, timeout: 10000, maxBuffer: 65536 });
+    const ids = result.stdout.trim().split(/\s+/).filter(Boolean);
+    if (ids.length > 16 || ids.some(id => !/^[a-f0-9]{12,64}$/.test(id))) throw new Error('Unexpected Compose container inventory');
+    for (const id of ids) {
+      const state = await execute('docker', ['--config', configDirectory, 'inspect', '--format', '{{.Name}} {{json .State}}', id], { windowsHide: true, timeout: 5000, maxBuffer: 65536 });
+      console.error(state.stdout.trim());
+    }
+  } catch { console.error('Container health inspection failed; inspect Docker/Compose and service logs directly.'); }
+}
 async function run(args: string[], allowFailure = false): Promise<boolean> {
   return new Promise<boolean>((success, fail) => {
     const child = spawn('docker', [...base, ...args], { stdio: 'inherit', shell: false });
-    child.once('error', fail); child.once('exit', code => code === 0 ? success(true) : allowFailure ? success(false) : fail(new Error(`Docker command failed (${code}); ensure a Linux-container Docker engine is running`)));
+    child.once('error', fail); child.once('exit', code => code === 0 ? success(true) : allowFailure ? success(false) : fail(new Error(`Docker Compose command failed (${code}); inspect service health/startup diagnostics above`)));
   });
+}
+async function start(args: string[]) {
+  try { await run(args); } catch (error) { await diagnose(); throw error; }
 }
 const operation = process.argv[2];
 if (!existsSync('infra/compose/compose.yaml')) throw new Error('Run from repository root');
 switch (operation) {
   case 'config': await run(['--profile', 'media', '--profile', 'scanner', '--profile', 'telemetry', 'config', '--quiet']); break;
   case 'up':
-    await run(['up', '-d', '--wait', '--wait-timeout', '240']);
+    await start(['up', '-d', '--wait', '--wait-timeout', '240']);
     if (!await run(['exec', '-T', 'garage', '/garage', 'bucket', 'info', 'chat-approved'], true)) {
       await run(['exec', '-T', 'garage', '/garage', 'bucket', 'create', 'chat-approved']);
     }
@@ -48,6 +66,7 @@ switch (operation) {
     await run(['--profile', 'telemetry', 'up', '-d', '--build', 'telemetry-relay', 'collector', 'prometheus', 'alertmanager']);
     console.log('Loopback telemetry profile started; run pnpm ops:telemetry for fresh host snapshots.'); break;
   }
-  case 'scanner': await run(['--profile', 'scanner', 'build', 'image-processor']); await run(['--profile', 'scanner', 'up', '-d', '--wait', '--wait-timeout', '900', 'clamav', 'image-processor', 'image-proxy']); break;
-  default: throw new Error('Usage: infra.ts config|up|down|media|scanner|telemetry');
+  case 'scanner': await run(['--profile', 'scanner', 'build', 'image-processor']); await start(['--profile', 'scanner', 'up', '-d', '--wait', '--wait-timeout', '900', 'clamav', 'image-processor', 'image-proxy']); break;
+  case 'diagnose': await diagnose(); break;
+  default: throw new Error('Usage: infra.ts config|up|down|media|scanner|telemetry|diagnose');
 }

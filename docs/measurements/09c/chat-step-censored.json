@@ -1,0 +1,230 @@
+{
+  "mode": "chat",
+  "profile": "step",
+  "profileLimits": {
+    "chatUsers": 8,
+    "groups": 2,
+    "rate": 8,
+    "payloadBytes": 1024,
+    "mediaUsers": 3
+  },
+  "warmupMs": 4000,
+  "measuredMs": 12000,
+  "host": {
+    "platform": "win32",
+    "release": "10.0.26300",
+    "cpuModel": "13th Gen Intel(R) Core(TM) i5-13450HX",
+    "logicalProcessors": 16,
+    "memoryBytes": 16944848896,
+    "freeBytesAtCapture": 3079970816,
+    "node": "24.21.0",
+    "generatorLocation": "same Windows host as application and Docker VM"
+  },
+  "topology": "single compiled API/gateway/worker, stable Vite development web, shared single-node Docker dependencies, private SFU 1 CPU/512 MiB, all colocated",
+  "admission": "unchanged product limits; distinct real loopback TCP source per REST actor, shared loopback for socket/browser traffic",
+  "unavailable": [
+    "production capacity",
+    "independent-host network",
+    "physical devices",
+    "forced TURN",
+    "browser RSS",
+    "production assets/CDN"
+  ],
+  "inventory": {
+    "docker": {
+      "version": "29.7.2",
+      "cpus": 16,
+      "memoryBytes": 8205791232
+    },
+    "imagePinsInRoleOrder": {
+      "roles": [
+        "mongo",
+        "redis",
+        "rabbitmq",
+        "garage",
+        "owned-sfu"
+      ],
+      "images": [
+        "mongo:8.0.32@sha256:d0d926f94df099bff534b7ee5b5986458131a22489dfff8664509af0c1e2ca9c",
+        "redis:8.10.2-alpine@sha256:3811787313eba226a2ef38658c6ccb91cd5e110edc89c37767de373120a0e5a0",
+        "rabbitmq:4.3.6-management-alpine@sha256:3ef7f7e89fed709a78f79b8b5f4e30e1312a1d4089da752e23595566d9d61a95",
+        "dxflrs/garage:v2.4.1@sha256:9c96caa2612d3411acc5b0e6701fb238dbfba33e533a6d7d3d811a4b12d0d020",
+        "livekit/livekit-server:v1.13.9@sha256:d0c04791bf63ca8dcea123571827d56ba9504bd57c8d5de60ee03b5408cc3154"
+      ]
+    },
+    "packageManager": "pnpm@12.11.2",
+    "playwright": "1.64.0",
+    "livekitClient": "2.23.0",
+    "sourceCommit": "97fcf1f45444f675969e0abfadef93e2b0003f93",
+    "trackedChanges": true
+  },
+  "passed": false,
+  "runtime": {
+    "samples": [
+      {
+        "elapsedMs": 278,
+        "freeHostBytes": 3077529600,
+        "generatorRssBytes": 178765824,
+        "roles": {
+          "api": {
+            "chat_process_cpu_user_seconds_total": 10.985,
+            "chat_process_cpu_system_seconds_total": 2.14,
+            "chat_process_resident_memory_bytes": 136851456,
+            "chat_nodejs_eventloop_lag_p99_seconds": 0.022904831
+          },
+          "gateway": {
+            "chat_process_cpu_user_seconds_total": 2.265,
+            "chat_process_cpu_system_seconds_total": 0.328,
+            "chat_process_resident_memory_bytes": 118226944,
+            "chat_nodejs_eventloop_lag_p99_seconds": 0.022396927,
+            "chat_gateway_connections": 8,
+            "chat_gateway_hint_queue": 0,
+            "chat_gateway_pending_acks": 0
+          },
+          "worker": {
+            "chat_process_cpu_user_seconds_total": 7.953,
+            "chat_process_cpu_system_seconds_total": 1.907,
+            "chat_process_resident_memory_bytes": 133881856,
+            "chat_nodejs_eventloop_lag_p99_seconds": 0.024330239,
+            "chat_outbox_pending": 0,
+            "chat_outbox_oldest_age_seconds": 0,
+            "chat_fanout_pending": 0
+          }
+        },
+        "sfu": null
+      },
+      {
+        "elapsedMs": 2141,
+        "freeHostBytes": 3047587840,
+        "generatorRssBytes": 172097536,
+        "roles": {
+          "api": {
+            "chat_process_cpu_user_seconds_total": 11.875,
+            "chat_process_cpu_system_seconds_total": 2.359,
+            "chat_process_resident_memory_bytes": 139915264,
+            "chat_nodejs_eventloop_lag_p99_seconds": 0.019939327
+          },
+          "gateway": {
+            "chat_process_cpu_user_seconds_total": 2.7960000000000003,
+            "chat_process_cpu_system_seconds_total": 0.42200000000000004,
+            "chat_process_resident_memory_bytes": 119549952,
+            "chat_nodejs_eventloop_lag_p99_seconds": 0.024723455,
+            "chat_gateway_connections": 8,
+            "chat_gateway_hint_queue": 5,
+            "chat_gateway_pending_acks": 0
+          },
+          "worker": {
+            "chat_process_cpu_user_seconds_total": 8.547,
+            "chat_process_cpu_system_seconds_total": 2.047,
+            "chat_process_resident_memory_bytes": 135483392,
+            "chat_nodejs_eventloop_lag_p99_seconds": 0.023855103,
+            "chat_outbox_pending": 0,
+            "chat_outbox_oldest_age_seconds": 0,
+            "chat_fanout_pending": 0
+          }
+        },
+        "sfu": null
+      },
+      {
+        "elapsedMs": 4130,
+        "freeHostBytes": 3073441792,
+        "generatorRssBytes": 172437504,
+        "roles": {
+          "api": {
+            "chat_process_cpu_user_seconds_total": 12.344,
+            "chat_process_cpu_system_seconds_total": 2.515,
+            "chat_process_resident_memory_bytes": 141193216,
+            "chat_nodejs_eventloop_lag_p99_seconds": 0.021069823
+          },
+          "gateway": {
+            "chat_process_cpu_user_seconds_total": 3.8120000000000003,
+            "chat_process_cpu_system_seconds_total": 0.625,
+            "chat_process_resident_memory_bytes": 124436480,
+            "chat_nodejs_eventloop_lag_p99_seconds": 0.020037631,
+            "chat_gateway_connections": 8,
+            "chat_gateway_hint_queue": 4,
+            "chat_gateway_pending_acks": 0
+          },
+          "worker": {
+            "chat_process_cpu_user_seconds_total": 9.297,
+            "chat_process_cpu_system_seconds_total": 2.125,
+            "chat_process_resident_memory_bytes": 132747264,
+            "chat_nodejs_eventloop_lag_p99_seconds": 0.022790143,
+            "chat_outbox_pending": 0,
+            "chat_outbox_oldest_age_seconds": 0,
+            "chat_fanout_pending": 0
+          }
+        },
+        "sfu": null
+      }
+    ],
+    "failure": null,
+    "generatorEventLoopMs": {
+      "p50": 30.834687,
+      "p95": 34.275327,
+      "p99": 41.582591,
+      "max": 56.098815
+    }
+  },
+  "chat": {
+    "users": 8,
+    "sockets": 8,
+    "groups": 2,
+    "groupSize": 4,
+    "payloadBytes": 1024,
+    "configuredOfferedPerSecond": 8,
+    "measuredIncludingDrainMs": null,
+    "achievedAcceptedPerSecondIncludingDrain": null,
+    "offered": 10,
+    "measuredOffered": 0,
+    "accepted": 9,
+    "measuredAccepted": 0,
+    "dropped": 1,
+    "failure": "offered_slot_lost",
+    "acceptanceMs": {
+      "count": 0,
+      "min": null,
+      "p50": null,
+      "p95": null,
+      "p99": null,
+      "max": null
+    },
+    "referenceApplicationMs": {
+      "count": 0,
+      "min": null,
+      "p50": null,
+      "p95": null,
+      "p99": null,
+      "max": null
+    },
+    "scheduleLatenessMs": {
+      "count": 0,
+      "min": null,
+      "p50": null,
+      "p95": null,
+      "p99": null,
+      "max": null
+    },
+    "explicitDuplicateAckMs": {
+      "count": 0,
+      "min": null,
+      "p50": null,
+      "p95": null,
+      "p99": null,
+      "max": null
+    },
+    "deliveryBoundary": "HTTP write start to authorized hint-triggered replay reference applied; excludes body/render/read latency"
+  },
+  "media": null,
+  "runner": {
+    "mode": "chat",
+    "profile": "step",
+    "applicationFixtureCleanup": "passed",
+    "providerCleanup": "passed",
+    "code": 1,
+    "limitHit": false,
+    "logBytes": 2649,
+    "redisKeysRemoved": 26
+  },
+  "formatVersion": 1
+}

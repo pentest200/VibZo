@@ -20,6 +20,7 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm lint
       - run: pnpm test
+      - run: pnpm test:load:harness
       - run: pnpm test:foundation:http
       - run: pnpm infra:config
       - run: pnpm infra:up

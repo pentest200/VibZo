@@ -13,7 +13,9 @@ export default function CallMedia({ account, call, wanted }: { account: AuthSess
   const nextTicketAt = useRef(0);
   useEffect(() => {
     if (!wanted || !call.ready) { pendingTicket.current = null; return; }
-    let active = true; const started = performance.now(), current = new Room({ adaptiveStream: true, dynacast: true, publishDefaults: { simulcast: true }, videoCaptureDefaults: { resolution: { width: 640, height: 360, frameRate: 20 } } });
+    // Keep publisher bitrate hints out of the subscriber's BUNDLE. The pinned
+    // SDK's single-PC mode can reject differing VP8 parameters during rejoin.
+    let active = true; const started = performance.now(), current = new Room({ singlePeerConnection: false, adaptiveStream: true, dynacast: true, publishDefaults: { simulcast: true }, videoCaptureDefaults: { resolution: { width: 640, height: 360, frameRate: 20 } } });
     setSetupMs(null);
     sessionRoom.current = current; setRoom(current); setError(''); setState('Connecting');
     const refresh = () => { if (active) { setRevision(value => value + 1); setState(current.state); } };

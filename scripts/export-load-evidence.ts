@@ -1,0 +1,13 @@
+import { basename, dirname, resolve } from 'node:path';
+import { mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
+import { disclosure } from '../tests/load/disclosure.js';
+if (process.argv.length !== 3) throw new Error('Usage: export-load-evidence .cache/load-UUID');
+const source = resolve(process.argv[2]!);
+if (dirname(source) !== resolve('.cache') || !/^load-[a-f0-9-]{36}$/.test(basename(source)) || await realpath(source) !== source) throw new Error('Refusing foreign measurement directory');
+const raw = JSON.parse(await readFile(resolve(source, 'measurement.json'), 'utf8')) as { mode: string; profile: string; passed: boolean };
+const runner = JSON.parse(await readFile(resolve(source, 'runner.json'), 'utf8')) as { mode: string; profile: string; code: number; applicationFixtureCleanup: string; providerCleanup: string };
+if (runner.mode !== raw.mode || runner.profile !== raw.profile || runner.applicationFixtureCleanup !== 'passed' || runner.providerCleanup !== 'passed' || raw.passed !== (runner.code === 0)) throw new Error('Measurement and completed runner/cleanup outcomes differ');
+const safe = disclosure({ ...raw, runner }), target = resolve('docs/measurements/09c');
+await mkdir(target, { recursive: true }); if (await realpath(target) !== target) throw new Error('Disclosure target cannot redirect');
+const file = resolve(target, `${raw.mode}-${raw.profile}-${raw.passed ? 'passed' : 'censored'}.json`);
+await writeFile(file, safe, { flag: 'wx' }); console.info('Disclosed measurement:', file);

@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { expect } from '@playwright/test';
 import type { APIRequestContext, Page } from '@playwright/test';
-const password = 'Conversation-browser-password-123';
+export const password = 'Conversation-browser-password-123';
 const mailpitOrigin = process.env['MAILPIT_URL'] ?? 'http://127.0.0.1:8025';
 export async function register(request: APIRequestContext, name: string) {
   const username = `${name}_${randomUUID().slice(0, 8)}`, email = `${username}@example.test`;

@@ -1,0 +1,701 @@
+{
+  "mode": "media",
+  "profile": "small",
+  "profileLimits": {
+    "chatUsers": 4,
+    "groups": 1,
+    "rate": 2,
+    "payloadBytes": 256,
+    "mediaUsers": 2
+  },
+  "warmupMs": 4000,
+  "measuredMs": 12000,
+  "host": {
+    "platform": "win32",
+    "release": "10.0.26300",
+    "cpuModel": "13th Gen Intel(R) Core(TM) i5-13450HX",
+    "logicalProcessors": 16,
+    "memoryBytes": 16944848896,
+    "freeBytesAtCapture": 2820329472,
+    "node": "24.21.0",
+    "generatorLocation": "same Windows host as application and Docker VM"
+  },
+  "topology": "single compiled API/gateway/worker, stable Vite development web, shared single-node Docker dependencies, private SFU 1 CPU/512 MiB, all colocated",
+  "admission": "unchanged product limits; distinct real loopback TCP source per REST actor, shared loopback for socket/browser traffic",
+  "unavailable": [
+    "production capacity",
+    "independent-host network",
+    "physical devices",
+    "forced TURN",
+    "browser RSS",
+    "production assets/CDN"
+  ],
+  "inventory": {
+    "docker": {
+      "version": "29.7.2",
+      "cpus": 16,
+      "memoryBytes": 8205791232
+    },
+    "imagePinsInRoleOrder": {
+      "roles": [
+        "mongo",
+        "redis",
+        "rabbitmq",
+        "garage",
+        "owned-sfu"
+      ],
+      "images": [
+        "mongo:8.0.32@sha256:d0d926f94df099bff534b7ee5b5986458131a22489dfff8664509af0c1e2ca9c",
+        "redis:8.10.2-alpine@sha256:3811787313eba226a2ef38658c6ccb91cd5e110edc89c37767de373120a0e5a0",
+        "rabbitmq:4.3.6-management-alpine@sha256:3ef7f7e89fed709a78f79b8b5f4e30e1312a1d4089da752e23595566d9d61a95",
+        "dxflrs/garage:v2.4.1@sha256:9c96caa2612d3411acc5b0e6701fb238dbfba33e533a6d7d3d811a4b12d0d020",
+        "livekit/livekit-server:v1.13.9@sha256:d0c04791bf63ca8dcea123571827d56ba9504bd57c8d5de60ee03b5408cc3154"
+      ]
+    },
+    "packageManager": "pnpm@12.11.2",
+    "playwright": "1.64.0",
+    "livekitClient": "2.23.0",
+    "sourceCommit": "97fcf1f45444f675969e0abfadef93e2b0003f93",
+    "trackedChanges": true
+  },
+  "windows": {
+    "chat": null,
+    "media": {
+      "startMs": 32713.8558,
+      "endMs": 44734.2537
+    },
+    "measuredStartMs": 32713.6163,
+    "clock": "same generator performance.now() milliseconds; chat end includes bounded live-reference drain"
+  },
+  "chatInvariants": null,
+  "mediaInvariants": {
+    "nativeMediaReleased": true,
+    "roomsAfterEnd": 0
+  },
+  "durableMessageCount": 0,
+  "passed": true,
+  "runtime": {
+    "startMs": 27108.392,
+    "endMs": 45016.0817,
+    "samples": [
+      {
+        "elapsedMs": 1602,
+        "freeHostBytes": 2430193664,
+        "generatorRssBytes": 215400448,
+        "roles": {
+          "api": {
+            "chat_process_cpu_user_seconds_total": 10.719,
+            "chat_process_cpu_system_seconds_total": 1.797,
+            "chat_process_resident_memory_bytes": 168259584,
+            "chat_nodejs_eventloop_lag_p99_seconds": 0.032538623
+          },
+          "gateway": {
+            "chat_process_cpu_user_seconds_total": 2.86,
+            "chat_process_cpu_system_seconds_total": 0.375,
+            "chat_process_resident_memory_bytes": 118771712,
+            "chat_nodejs_eventloop_lag_p99_seconds": 0.029851647,
+            "chat_gateway_connections": 2,
+            "chat_gateway_hint_queue": 0,
+            "chat_gateway_pending_acks": 0
+          },
+          "worker": {
+            "chat_process_cpu_user_seconds_total": 7.828,
+            "chat_process_cpu_system_seconds_total": 1.547,
+            "chat_process_resident_memory_bytes": 134443008,
+            "chat_nodejs_eventloop_lag_p99_seconds": 0.031375359,
+            "chat_outbox_pending": 0,
+            "chat_outbox_oldest_age_seconds": 0,
+            "chat_fanout_pending": 0
+          }
+        },
+        "sfu": {
+          "cpuPercent": 10,
+          "memoryUsage": "45.66MiB / 512MiB"
+        }
+      },
+      {
+        "elapsedMs": 2161,
+        "freeHostBytes": 2421870592,
+        "generatorRssBytes": 207503360,
+        "roles": {
+          "api": {
+            "chat_process_cpu_user_seconds_total": 11.25,
+            "chat_process_cpu_system_seconds_total": 1.875,
+            "chat_process_resident_memory_bytes": 169443328,
+            "chat_nodejs_eventloop_lag_p99_seconds": 0.025214975
+          },
+          "gateway": {
+            "chat_process_cpu_user_seconds_total": 3.094,
+            "chat_process_cpu_system_seconds_total": 0.375,
+            "chat_process_resident_memory_bytes": 119230464,
+            "chat_nodejs_eventloop_lag_p99_seconds": 0.027738111,
+            "chat_gateway_connections": 2,
+            "chat_gateway_hint_queue": 0,
+            "chat_gateway_pending_acks": 0
+          },
+          "worker": {
+            "chat_process_cpu_user_seconds_total": 8.438,
+            "chat_process_cpu_system_seconds_total": 1.641,
+            "chat_process_resident_memory_bytes": 133472256,
+            "chat_nodejs_eventloop_lag_p99_seconds": 0.025772031,
+            "chat_outbox_pending": 0,
+            "chat_outbox_oldest_age_seconds": 0,
+            "chat_fanout_pending": 0
+          }
+        },
+        "sfu": null
+      },
+      {
+        "elapsedMs": 5345,
+        "freeHostBytes": 2421698560,
+        "generatorRssBytes": 208003072,
+        "roles": {
+          "api": {
+            "chat_process_cpu_user_seconds_total": 11.672,
+            "chat_process_cpu_system_seconds_total": 1.922,
+            "chat_process_resident_memory_bytes": 170147840,
+            "chat_nodejs_eventloop_lag_p99_seconds": 0.025182207
+          },
+          "gateway": {
+            "chat_process_cpu_user_seconds_total": 3.11,
+            "chat_process_cpu_system_seconds_total": 0.375,
+            "chat_process_resident_memory_bytes": 119676928,
+            "chat_nodejs_eventloop_lag_p99_seconds": 0.026787839,
+            "chat_gateway_connections": 2,
+            "chat_gateway_hint_queue": 0,
+            "chat_gateway_pending_acks": 0
+          },
+          "worker": {
+            "chat_process_cpu_user_seconds_total": 8.844000000000001,
+            "chat_process_cpu_system_seconds_total": 1.75,
+            "chat_process_resident_memory_bytes": 133144576,
+            "chat_nodejs_eventloop_lag_p99_seconds": 0.023379967,
+            "chat_outbox_pending": 0,
+            "chat_outbox_oldest_age_seconds": 0,
+            "chat_fanout_pending": 0
+          }
+        },
+        "sfu": {
+          "cpuPercent": 9.07,
+          "memoryUsage": "45.48MiB / 512MiB"
+        }
+      },
+      {
+        "elapsedMs": 6103,
+        "freeHostBytes": 2485116928,
+        "generatorRssBytes": 168984576,
+        "roles": {
+          "api": {
+            "chat_process_cpu_user_seconds_total": 12.188,
+            "chat_process_cpu_system_seconds_total": 2.016,
+            "chat_process_resident_memory_bytes": 170418176,
+            "chat_nodejs_eventloop_lag_p99_seconds": 0.025280511
+          },
+          "gateway": {
+            "chat_process_cpu_user_seconds_total": 3.1879999999999997,
+            "chat_process_cpu_system_seconds_total": 0.406,
+            "chat_process_resident_memory_bytes": 120561664,
+            "chat_nodejs_eventloop_lag_p99_seconds": 0.027492351,
+            "chat_gateway_connections": 2,
+            "chat_gateway_hint_queue": 0,
+            "chat_gateway_pending_acks": 0
+          },
+          "worker": {
+            "chat_process_cpu_user_seconds_total": 9.266000000000002,
+            "chat_process_cpu_system_seconds_total": 1.797,
+            "chat_process_resident_memory_bytes": 132825088,
+            "chat_nodejs_eventloop_lag_p99_seconds": 0.025411583,
+            "chat_outbox_pending": 0,
+            "chat_outbox_oldest_age_seconds": 0,
+            "chat_fanout_pending": 0
+          }
+        },
+        "sfu": null
+      },
+      {
+        "elapsedMs": 9364,
+        "freeHostBytes": 2487447552,
+        "generatorRssBytes": 170594304,
+        "roles": {
+          "api": {
+            "chat_process_cpu_user_seconds_total": 12.641,
+            "chat_process_cpu_system_seconds_total": 2.078,
+            "chat_process_resident_memory_bytes": 171261952,
+            "chat_nodejs_eventloop_lag_p99_seconds": 0.024674303
+          },
+          "gateway": {
+            "chat_process_cpu_user_seconds_total": 3.219,
+            "chat_process_cpu_system_seconds_total": 0.406,
+            "chat_process_resident_memory_bytes": 120676352,
+            "chat_nodejs_eventloop_lag_p99_seconds": 0.027197439,
+            "chat_gateway_connections": 2,
+            "chat_gateway_hint_queue": 0,
+            "chat_gateway_pending_acks": 0
+          },
+          "worker": {
+            "chat_process_cpu_user_seconds_total": 9.578000000000001,
+            "chat_process_cpu_system_seconds_total": 1.907,
+            "chat_process_resident_memory_bytes": 139309056,
+            "chat_nodejs_eventloop_lag_p99_seconds": 0.026165247,
+            "chat_outbox_pending": 0,
+            "chat_outbox_oldest_age_seconds": 0,
+            "chat_fanout_pending": 0
+          }
+        },
+        "sfu": {
+          "cpuPercent": 10.72,
+          "memoryUsage": "46.39MiB / 512MiB"
+        }
+      },
+      {
+        "elapsedMs": 10196,
+        "freeHostBytes": 2503766016,
+        "generatorRssBytes": 171847680,
+        "roles": {
+          "api": {
+            "chat_process_cpu_user_seconds_total": 13.422,
+            "chat_process_cpu_system_seconds_total": 2.1559999999999997,
+            "chat_process_resident_memory_bytes": 172449792,
+            "chat_nodejs_eventloop_lag_p99_seconds": 0.025542655
+          },
+          "gateway": {
+            "chat_process_cpu_user_seconds_total": 3.235,
+            "chat_process_cpu_system_seconds_total": 0.42200000000000004,
+            "chat_process_resident_memory_bytes": 120791040,
+            "chat_nodejs_eventloop_lag_p99_seconds": 0.029458431,
+            "chat_gateway_connections": 2,
+            "chat_gateway_hint_queue": 0,
+            "chat_gateway_pending_acks": 0
+          },
+          "worker": {
+            "chat_process_cpu_user_seconds_total": 10.094000000000001,
+            "chat_process_cpu_system_seconds_total": 1.985,
+            "chat_process_resident_memory_bytes": 146432000,
+            "chat_nodejs_eventloop_lag_p99_seconds": 0.024068095,
+            "chat_outbox_pending": 0,
+            "chat_outbox_oldest_age_seconds": 0,
+            "chat_fanout_pending": 0
+          }
+        },
+        "sfu": null
+      },
+      {
+        "elapsedMs": 13252,
+        "freeHostBytes": 2495717376,
+        "generatorRssBytes": 172544000,
+        "roles": {
+          "api": {
+            "chat_process_cpu_user_seconds_total": 13.985000000000001,
+            "chat_process_cpu_system_seconds_total": 2.1719999999999997,
+            "chat_process_resident_memory_bytes": 170778624,
+            "chat_nodejs_eventloop_lag_p99_seconds": 0.025296895
+          },
+          "gateway": {
+            "chat_process_cpu_user_seconds_total": 3.2969999999999997,
+            "chat_process_cpu_system_seconds_total": 0.45300000000000007,
+            "chat_process_resident_memory_bytes": 120934400,
+            "chat_nodejs_eventloop_lag_p99_seconds": 0.028131327,
+            "chat_gateway_connections": 2,
+            "chat_gateway_hint_queue": 0,
+            "chat_gateway_pending_acks": 0
+          },
+          "worker": {
+            "chat_process_cpu_user_seconds_total": 10.469000000000001,
+            "chat_process_cpu_system_seconds_total": 2.0940000000000003,
+            "chat_process_resident_memory_bytes": 146518016,
+            "chat_nodejs_eventloop_lag_p99_seconds": 0.025444351,
+            "chat_outbox_pending": 0,
+            "chat_outbox_oldest_age_seconds": 0,
+            "chat_fanout_pending": 0
+          }
+        },
+        "sfu": {
+          "cpuPercent": 9.83,
+          "memoryUsage": "45.46MiB / 512MiB"
+        }
+      },
+      {
+        "elapsedMs": 14188,
+        "freeHostBytes": 2484756480,
+        "generatorRssBytes": 172752896,
+        "roles": {
+          "api": {
+            "chat_process_cpu_user_seconds_total": 14.110000000000001,
+            "chat_process_cpu_system_seconds_total": 2.2809999999999997,
+            "chat_process_resident_memory_bytes": 173977600,
+            "chat_nodejs_eventloop_lag_p99_seconds": 0.024674303
+          },
+          "gateway": {
+            "chat_process_cpu_user_seconds_total": 3.3129999999999997,
+            "chat_process_cpu_system_seconds_total": 0.4680000000000001,
+            "chat_process_resident_memory_bytes": 121008128,
+            "chat_nodejs_eventloop_lag_p99_seconds": 0.025362431,
+            "chat_gateway_connections": 2,
+            "chat_gateway_hint_queue": 0,
+            "chat_gateway_pending_acks": 0
+          },
+          "worker": {
+            "chat_process_cpu_user_seconds_total": 10.891000000000002,
+            "chat_process_cpu_system_seconds_total": 2.188,
+            "chat_process_resident_memory_bytes": 147062784,
+            "chat_nodejs_eventloop_lag_p99_seconds": 0.025493503,
+            "chat_outbox_pending": 0,
+            "chat_outbox_oldest_age_seconds": 0,
+            "chat_fanout_pending": 0
+          }
+        },
+        "sfu": null
+      },
+      {
+        "elapsedMs": 17907,
+        "freeHostBytes": 2466459648,
+        "generatorRssBytes": 173715456,
+        "roles": {
+          "api": {
+            "chat_process_cpu_user_seconds_total": 14.500000000000002,
+            "chat_process_cpu_system_seconds_total": 2.3589999999999995,
+            "chat_process_resident_memory_bytes": 184131584,
+            "chat_nodejs_eventloop_lag_p99_seconds": 0.025657343
+          },
+          "gateway": {
+            "chat_process_cpu_user_seconds_total": 3.4999999999999996,
+            "chat_process_cpu_system_seconds_total": 0.5000000000000001,
+            "chat_process_resident_memory_bytes": 121507840,
+            "chat_nodejs_eventloop_lag_p99_seconds": 0.030261247,
+            "chat_gateway_connections": 2,
+            "chat_gateway_hint_queue": 0,
+            "chat_gateway_pending_acks": 0
+          },
+          "worker": {
+            "chat_process_cpu_user_seconds_total": 11.297000000000002,
+            "chat_process_cpu_system_seconds_total": 2.2190000000000003,
+            "chat_process_resident_memory_bytes": 147992576,
+            "chat_nodejs_eventloop_lag_p99_seconds": 0.028311551,
+            "chat_outbox_pending": 0,
+            "chat_outbox_oldest_age_seconds": 0,
+            "chat_fanout_pending": 0
+          }
+        },
+        "sfu": {
+          "cpuPercent": 9.83,
+          "memoryUsage": "46.26MiB / 512MiB"
+        }
+      }
+    ],
+    "failure": null,
+    "generatorEventLoopMs": {
+      "count": 656,
+      "p50": 25.296895,
+      "p95": 33.751039,
+      "p99": 36.372479,
+      "max": 88.735743
+    }
+  },
+  "chat": null,
+  "media": {
+    "users": 2,
+    "setupToConnectedMs": {
+      "count": 2,
+      "min": 5192.284100000001,
+      "p50": 5192.284100000001,
+      "p95": 6471.2091,
+      "p99": 6471.2091,
+      "max": 6471.2091
+    },
+    "setupToRemoteReadyObservedMs": {
+      "count": 2,
+      "min": 7158.678599999999,
+      "p50": 7158.678599999999,
+      "p95": 7545.4619999999995,
+      "p99": 7545.4619999999995,
+      "max": 7545.4619999999995
+    },
+    "setupToValidatedMediaMs": {
+      "count": 2,
+      "min": 7613.7543000000005,
+      "p50": 7613.7543000000005,
+      "p95": 7618.5250000000015,
+      "p99": 7618.5250000000015,
+      "max": 7618.5250000000015
+    },
+    "setupBoundary": "from owner call click; readiness observed by polling, validated media requires >5 decoded frames and >100 audio bytes",
+    "setupSampleLimit": "2 or 3 samples do not establish tail reliability",
+    "capture": {
+      "requestedWidth": 640,
+      "requestedHeight": 360,
+      "requestedFps": 20,
+      "generated": true
+    },
+    "bitrateBoundary": "RTC RTP byte-counter deltas; excludes wire/transport overhead and is not billed bandwidth",
+    "usersBitrate": [
+      {
+        "receivedKbitPerSecond": 194.28337871778183,
+        "sentKbitPerSecond": 192.11328451259695
+      },
+      {
+        "receivedKbitPerSecond": 192.6421533888759,
+        "sentKbitPerSecond": 194.93014405640508
+      }
+    ],
+    "samples": [
+      {
+        "elapsedMs": 9.75829999999769,
+        "peers": [
+          {
+            "peers": 2,
+            "connected": 2,
+            "frames": 123,
+            "audioBytes": 63132,
+            "receivedBytes": 151287,
+            "sentBytes": 278210,
+            "lostPackets": 0,
+            "jitterSeconds": 0.004,
+            "rttSeconds": 0.009,
+            "availableOutgoingBps": 611951,
+            "routes": [
+              "direct"
+            ]
+          },
+          {
+            "peers": 2,
+            "connected": 2,
+            "frames": 125,
+            "audioBytes": 56518,
+            "receivedBytes": 129247,
+            "sentBytes": 351057,
+            "lostPackets": 0,
+            "jitterSeconds": 0.005,
+            "rttSeconds": 0.007,
+            "availableOutgoingBps": 612462,
+            "routes": [
+              "direct"
+            ]
+          }
+        ]
+      },
+      {
+        "elapsedMs": 2040.2898999999998,
+        "peers": [
+          {
+            "peers": 2,
+            "connected": 2,
+            "frames": 164,
+            "audioBytes": 82109,
+            "receivedBytes": 197332,
+            "sentBytes": 320286,
+            "lostPackets": 0,
+            "jitterSeconds": 0.005,
+            "rttSeconds": 0.004,
+            "availableOutgoingBps": 611951,
+            "routes": [
+              "direct"
+            ]
+          },
+          {
+            "peers": 2,
+            "connected": 2,
+            "frames": 166,
+            "audioBytes": 76342,
+            "receivedBytes": 171870,
+            "sentBytes": 398073,
+            "lostPackets": 0,
+            "jitterSeconds": 0.006,
+            "rttSeconds": 0.007,
+            "availableOutgoingBps": 612462,
+            "routes": [
+              "direct"
+            ]
+          }
+        ]
+      },
+      {
+        "elapsedMs": 4072.5682999999954,
+        "peers": [
+          {
+            "peers": 2,
+            "connected": 2,
+            "frames": 205,
+            "audioBytes": 101104,
+            "receivedBytes": 247840,
+            "sentBytes": 370776,
+            "lostPackets": 0,
+            "jitterSeconds": 0.005,
+            "rttSeconds": 0.007,
+            "availableOutgoingBps": 611951,
+            "routes": [
+              "direct"
+            ]
+          },
+          {
+            "peers": 2,
+            "connected": 2,
+            "frames": 207,
+            "audioBytes": 96201,
+            "receivedBytes": 222391,
+            "sentBytes": 448581,
+            "lostPackets": 0,
+            "jitterSeconds": 0.004,
+            "rttSeconds": 0.004,
+            "availableOutgoingBps": 612462,
+            "routes": [
+              "direct"
+            ]
+          }
+        ]
+      },
+      {
+        "elapsedMs": 6092.002499999999,
+        "peers": [
+          {
+            "peers": 2,
+            "connected": 2,
+            "frames": 245,
+            "audioBytes": 120070,
+            "receivedBytes": 298025,
+            "sentBytes": 421021,
+            "lostPackets": 0,
+            "jitterSeconds": 0.004,
+            "rttSeconds": 0.007,
+            "availableOutgoingBps": 611951,
+            "routes": [
+              "direct"
+            ]
+          },
+          {
+            "peers": 2,
+            "connected": 2,
+            "frames": 247,
+            "audioBytes": 115578,
+            "receivedBytes": 272852,
+            "sentBytes": 498766,
+            "lostPackets": 0,
+            "jitterSeconds": 0.004,
+            "rttSeconds": 0.004,
+            "availableOutgoingBps": 612462,
+            "routes": [
+              "direct"
+            ]
+          }
+        ]
+      },
+      {
+        "elapsedMs": 8115.634699999999,
+        "peers": [
+          {
+            "peers": 2,
+            "connected": 2,
+            "frames": 286,
+            "audioBytes": 138863,
+            "receivedBytes": 348483,
+            "sentBytes": 472005,
+            "lostPackets": 0,
+            "jitterSeconds": 0.006,
+            "rttSeconds": 0.007,
+            "availableOutgoingBps": 611951,
+            "routes": [
+              "direct"
+            ]
+          },
+          {
+            "peers": 2,
+            "connected": 2,
+            "frames": 287,
+            "audioBytes": 134896,
+            "receivedBytes": 323836,
+            "sentBytes": 548521,
+            "lostPackets": 0,
+            "jitterSeconds": 0.004,
+            "rttSeconds": 0.004,
+            "availableOutgoingBps": 612462,
+            "routes": [
+              "direct"
+            ]
+          }
+        ]
+      },
+      {
+        "elapsedMs": 10145.635299999998,
+        "peers": [
+          {
+            "peers": 2,
+            "connected": 2,
+            "frames": 326,
+            "audioBytes": 157514,
+            "receivedBytes": 396054,
+            "sentBytes": 520243,
+            "lostPackets": 0,
+            "jitterSeconds": 0.005,
+            "rttSeconds": 0.02,
+            "availableOutgoingBps": 611951,
+            "routes": [
+              "direct"
+            ]
+          },
+          {
+            "peers": 2,
+            "connected": 2,
+            "frames": 328,
+            "audioBytes": 154224,
+            "receivedBytes": 372074,
+            "sentBytes": 596784,
+            "lostPackets": 0,
+            "jitterSeconds": 0.004,
+            "rttSeconds": 0.004,
+            "availableOutgoingBps": 612462,
+            "routes": [
+              "direct"
+            ]
+          }
+        ]
+      },
+      {
+        "elapsedMs": 12020.2968,
+        "peers": [
+          {
+            "peers": 2,
+            "connected": 2,
+            "frames": 364,
+            "audioBytes": 175364,
+            "receivedBytes": 442968,
+            "sentBytes": 566633,
+            "lostPackets": 0,
+            "jitterSeconds": 0.004,
+            "rttSeconds": 0.004,
+            "availableOutgoingBps": 611951,
+            "routes": [
+              "direct"
+            ]
+          },
+          {
+            "peers": 2,
+            "connected": 2,
+            "frames": 366,
+            "audioBytes": 171540,
+            "receivedBytes": 418464,
+            "sentBytes": 643709,
+            "lostPackets": 0,
+            "jitterSeconds": 0.005,
+            "rttSeconds": 0.004,
+            "availableOutgoingBps": 612462,
+            "routes": [
+              "direct"
+            ]
+          }
+        ]
+      }
+    ],
+    "browserRss": "unavailable",
+    "hardwareAndForcedTurnVerified": false
+  },
+  "runner": {
+    "mode": "media",
+    "profile": "small",
+    "applicationFixtureCleanup": "passed",
+    "providerCleanup": "passed",
+    "code": 0,
+    "limitHit": false,
+    "logBytes": 6104,
+    "redisKeysRemoved": 10
+  },
+  "formatVersion": 1
+}

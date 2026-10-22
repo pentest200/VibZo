@@ -6,6 +6,7 @@ import { traceFields } from './tracing.js';
 export { startTelemetry, traced, traceCarrier, traceFields, safeTraceparent, beginRequestSpan } from './tracing.js';
 export { httpMetrics } from './http-metrics.js';
 export { DrainTracker } from './drain.js';
+export { requestFailure } from './request-failure.js';
 export { recordOperational, observeProjectionLag, operationalMetrics } from './operational-metrics.js';
 
 export function createLogger(service: string, level = 'info', destination?: Parameters<typeof pino>[1]) {

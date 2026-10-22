@@ -2,6 +2,7 @@ import { createConnection } from 'node:net';
 import { loadConfig } from '@chat/config';
 import type { Config } from '@chat/config';
 import { AttachmentStorage, BrokerTransport, LiveKitProvider, createMongoClient } from '@chat/domain';
+import { browserEndpoints } from './endpoints.js';
 
 export interface FixtureIdentity { database: string; runId: string }
 function fixtureConfig(identity: FixtureIdentity): Config {
@@ -41,7 +42,8 @@ export async function cleanupFixture(identity: FixtureIdentity) {
       return;
     }
     if (owner.runId !== identity.runId) throw new Error('Refusing foreign browser fixture cleanup');
-    if ((await Promise.all([3000, 3001, 3002, 5173, 16380, 16381].map(listening))).some(Boolean)) throw new Error('Browser servers must stop before fixture cleanup');
+    const ports = browserEndpoints();
+    if ((await Promise.all([ports.api, ports.gateway, ports.worker, ports.web, 16380, 16381].map(listening))).some(Boolean)) throw new Error('Browser servers must stop before fixture cleanup');
     const rooms = await db.collection<{ _id: string }>('callRooms').find().toArray();
     if (rooms.some(room => !room._id.startsWith(`${identity.database}_call_`))) throw new Error('Refusing foreign browser media room cleanup');
     const media = new LiveKitProvider(config);

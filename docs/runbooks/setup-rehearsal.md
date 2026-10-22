@@ -1,0 +1,23 @@
+# Isolated clean setup rehearsals
+
+Run from the original checkout with pinned Node 24.21.0/pnpm 12.11.2, a Linux-container Docker engine, registry access if bytes are absent, and the normal workspace bootstrap from the README. Baseline and full modes reuse installed toolchain/package/image caches; neither is a clean OS/toolchain bootstrap. Both create fresh source/dependencies/build and fresh service volumes.
+
+```powershell
+pnpm.cmd test:setup:guards
+pnpm.cmd test:setup:clean
+pnpm.cmd test:setup:full
+```
+
+Linux/macOS use `pnpm`. No endpoint, directory, project or destructive-cleanup overrides are accepted. Production mode is refused. The preflight needs 2.5 GiB free host RAM, 3 GiB disk and a Docker VM configured with at least 6 GiB memory. These are rehearsal safeguards, not a measured product minimum. Existing workloads still need their own headroom. The five extra services have 1,472 MiB total container caps; each command has bounded time/log output. Run sequentially, without other load/build/drill commands. The runner rechecks host memory before starting services.
+
+The runner prints `.cache/clean-setup-<owner>` and retains a fresh source directory, SHA256 source manifest, per-step private logs, generated Compose and `outcome.json`. Current tracked and nonignored untracked files are copied; redirected files, caches, secrets, dependency directories and prior builds are rejected. The snapshot has no Git metadata. A frozen install creates its own `node_modules`; the original lockfile/cache policy is preserved. Source changing during its copy aborts the run.
+
+The generated Compose retains the canonical digest pins, commands and health probes, with a unique project, fresh labelled volumes/network and distinct loopback-only ports. Original services/volumes are never test targets. Actual foundation tests cover replica transactions/abort, API readiness, authenticated Redis, confirmed Rabbit subscriptions, private S3 and SMTP/HTTP. All nine migrations are applied twice, comparing exact marker bytes. Auth tests use the owned mail/dependencies. A retained Mongo restart must preserve every marker and writable-primary status.
+
+Exit 0 requires every step and removal of all owned containers, volumes and network. A step failure stops further tests and still attempts checked cleanup. Cleanup inventories the exact project, verifies its independent owner label and expected resource names before deleting any resource. The runner retains source/logs; it does not recursively delete directories. Do not publish private logs/Compose because synthetic configuration or email tokens may be present.
+
+An externally killed runner can leave `.cache/clean-setup.lock` and resources. Inspect its PID/owner/project and the exact directory first. Do not remove a live lock or run `down --volumes` against `commonroom-local`. For a confirmed dead runner, inspect every resource's Compose project, owner label and expected name using the policy in `scripts/test-clean-setup.ts` before removing only those resources. Automatic resume of an interrupted source install is not supported; keep its failed evidence and start a new owned rehearsal after checked cleanup.
+
+`test:setup:full` adds a fresh ClamAV signature volume, isolated decoder/proxy build/tag and internal processing network, a fresh pinned Chromium installation, and the integrated browser journey against these fresh services and an owned SFU/mail pair. Four guarded application ports differ from ordinary defaults; Vite proxy, readiness probes, origins and cleanup interlocks use those exact ports. The owned provider routes signed webhooks to the fresh API. The full run needs >=4 GiB free host RAM, >=5 GiB disk and >=7 GiB configured Docker VM memory; stop below 512 MiB host free. Extra service caps total 4,800 MiB including the baseline and separate provider/mail pair; actual consumption differs. Do not stop original services to make room. Scanner startup is capped at 900s; its signature volume is freshly initialized using the pinned image's normal startup. This does not claim a cache-cold image/signature download or a measured production minimum.
+
+The full run's owned image, extra networks/signature volume and provider containers/configuration are included in checked cleanup. Both modes retain private source/logs. Full mode downloads browser bytes, so it requires access to the Playwright browser distribution and sufficient disk. It passed locally on Windows/Docker; Linux host-loopback webhook routing remains an independent gate. The normal `infra:up` default-port entry point remains separately covered by its Mongo startup drill. Telemetry deployment and production provisioning are outside this rehearsal. See [09D evidence](../phase-09d-evidence.md).

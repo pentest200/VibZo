@@ -24,6 +24,7 @@ async function instrument(page: Page) {
         setTimeout(() => {
           const config = this.getConfiguration();
           console.info('ICE policy/server count:', config.iceTransportPolicy, config.iceServers?.length ?? 0, 'state:', this.iceConnectionState);
+          console.info('ICE negotiation state:', JSON.stringify({ signaling: this.signalingState, gathering: this.iceGatheringState, localType: this.localDescription?.type ?? null, remoteType: this.remoteDescription?.type ?? null, transceivers: this.getTransceivers().length }));
           void this.getStats().then(report => {
             const counts: Record<string, number> = {};
             for (const row of report.values()) if (['local-candidate', 'remote-candidate', 'candidate-pair'].includes(row.type)) {
@@ -66,7 +67,7 @@ async function remoteVideo(page: Page, count = 1) {
   await expect.poll(async () => (await received(page)).frames, { timeout: 20000 }).toBeGreaterThan(5);
   await expect.poll(async () => (await received(page, 'audio')).bytes, { timeout: 20000 }).toBeGreaterThan(100);
 }
-async function otherPage(browser: Browser) { const context = await browser.newContext({ permissions: ['microphone', 'camera'] }); const page = await context.newPage(); await instrument(page); return { context, page }; }
+async function otherPage(browser: Browser) { const context = await browser.newContext({ permissions: process.env['CALL_TEST_RELAY'] === 'true' ? [] : ['microphone', 'camera'] }); const page = await context.newPage(); await instrument(page); return { context, page }; }
 async function realWebhooks() {
   const client = createMongoClient(loadConfig({ ...process.env, NODE_ENV: 'test', MONGODB_DATABASE: process.env['E2E_DATABASE'] }));
   try {

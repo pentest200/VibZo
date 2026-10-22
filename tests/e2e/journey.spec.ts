@@ -28,6 +28,8 @@ test('independent users complete chat, offline recovery, files, privacy, reporti
   const owner = await register(request, 'journeyowner'), peer = await register(request, 'journeypeer'), reviewer = await register(request, 'journeyreview');
   const context = await browser.newContext({ permissions: ['microphone', 'camera'] }), other = await context.newPage(), reviewContext = await browser.newContext(), review = await reviewContext.newPage();
   await instrument(page); await instrument(other);
+  const invalidCallReads: string[] = [];
+  for (const tab of [page, other]) tab.on('request', request => { const path = new URL(request.url()).pathname; if (/^\/api\/v1\/calls\/(null|undefined)$/.test(path)) invalidCallReads.push(path); });
   const fixture = process.env['E2E_DATABASE']; if (!/^chat_e2e_auth_[a-f0-9]{32}$/.test(fixture ?? '')) throw new Error('Owned browser fixture required');
   const client = createMongoClient(loadConfig({ ...process.env, NODE_ENV: 'test', MONGODB_DATABASE: fixture }));
   try { await client.connect(); await client.db(fixture).collection('users').updateOne({ emailCanonical: reviewer.email }, { $set: { role: 'moderator' } }); } finally { await client.close(); }
@@ -62,7 +64,7 @@ test('independent users complete chat, offline recovery, files, privacy, reporti
     const shared = page.waitForResponse(response => response.url().endsWith('/api/v1/avatars/privacy') && response.status() === 200); await panel.getByRole('checkbox').check(); await shared;
     await expect(other.locator('.conversation-heading img')).toBeVisible({ timeout: 25000 }); await page.goto(direct);
     await page.getByRole('button', { name: 'Video call', exact: true }).click(); await expect(other.locator('.incoming-call')).toBeVisible(); await other.getByRole('button', { name: 'Accept call', exact: true }).click();
-    await media(page); await media(other); await accessible(page, info, 'active-call');
+    await media(page); await media(other); expect(invalidCallReads).toEqual([]); await accessible(page, info, 'active-call');
     await page.getByRole('button', { name: 'Mute microphone', exact: true }).click(); await expect(page.getByRole('button', { name: 'Enable microphone', exact: true })).toHaveAttribute('aria-pressed', 'false');
     await page.getByRole('button', { name: 'Enable microphone', exact: true }).click();
     await page.getByRole('button', { name: 'Share screen', exact: true }).click(); await expect(other.locator('figure[data-local="false"][data-source="screen_share"] video')).toBeVisible({ timeout: 15000 });

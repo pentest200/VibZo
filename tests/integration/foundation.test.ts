@@ -100,7 +100,7 @@ it('reads/writes two private S3 areas and rejects unauthenticated object access'
   } finally { s3.destroy(); }
 });
 it('reaches Mailpit HTTP and receives an actual SMTP greeting', async () => {
-  const response = await fetch('http://127.0.0.1:8025/readyz', { signal: AbortSignal.timeout(3000) });
+  const response = await fetch(`${process.env['MAILPIT_URL'] ?? 'http://127.0.0.1:8025'}/readyz`, { signal: AbortSignal.timeout(3000) });
   expect(response.ok).toBe(true);
   const greeting = await new Promise<string>((resolve, reject) => {
     const socket = connectTcp({ host: config.SMTP_HOST, port: config.SMTP_PORT });

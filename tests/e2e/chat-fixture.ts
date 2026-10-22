@@ -1,11 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { expect } from '@playwright/test';
 import type { APIRequestContext, Page } from '@playwright/test';
+import { browserEndpoints } from './endpoints.js';
 export const password = 'Conversation-browser-password-123';
 const mailpitOrigin = process.env['MAILPIT_URL'] ?? 'http://127.0.0.1:8025';
+const origin = browserEndpoints().origin;
 export async function register(request: APIRequestContext, name: string) {
   const username = `${name}_${randomUUID().slice(0, 8)}`, email = `${username}@example.test`;
-  const response = await request.post('/api/v1/auth/register', { headers: { Origin: 'http://localhost:5173' }, data: { email, username, displayName: name, password } });
+  const response = await request.post('/api/v1/auth/register', { headers: { Origin: origin }, data: { email, username, displayName: name, password } });
   expect(response.status()).toBe(202);
   let token = '';
   await expect.poll(async () => {
@@ -16,7 +18,7 @@ export async function register(request: APIRequestContext, name: string) {
     }
     return false;
   }, { timeout: 20000 }).toBe(true);
-  expect((await request.post('/api/v1/auth/verify', { headers: { Origin: 'http://localhost:5173' }, data: { token } })).status()).toBe(200);
+  expect((await request.post('/api/v1/auth/verify', { headers: { Origin: origin }, data: { token } })).status()).toBe(200);
   return { username, email };
 }
 export async function login(page: Page, email: string) {

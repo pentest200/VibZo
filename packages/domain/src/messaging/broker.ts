@@ -4,7 +4,31 @@ import type { Channel, ChannelModel, ConfirmChannel, Message, Options } from 'am
 import type { Config } from '@chat/config';
 import type { Subscription } from './model.js';
 export const subscriptions: Subscription[] = ['fanout', 'notification'];
-export class BrokerUnavailable extends Error { constructor() { super('Broker publication is unavailable.'); } }
+type OpenStage = 'connect' | 'publisher' | 'topology';
+type FailureReason = 'timeout' | 'connection_refused' | 'connection_closed' | 'access_refused' | 'not_allowed' | 'not_found' | 'precondition_failed' | 'resource_locked' | 'unavailable';
+interface OpenDiagnostic { stage: OpenStage; reason: FailureReason; replyCode?: number }
+export class BrokerUnavailable extends Error {
+  constructor(readonly diagnostic?: OpenDiagnostic) { super(`Broker publication is unavailable.${diagnostic ? ` [${diagnostic.stage}/${diagnostic.reason}${diagnostic.replyCode ? `/${diagnostic.replyCode}` : ''}]` : ''}`); }
+}
+// amqplib errors can contain endpoints, credentials and topology identifiers.
+// Retain only fixed classifications, never the original message or cause.
+export function brokerOpenFailure(error: unknown, stage: OpenStage): BrokerUnavailable {
+  const raw = error && typeof error === 'object' ? error as { code?: unknown; message?: unknown } : {};
+  const message = typeof raw.message === 'string' ? raw.message : '';
+  const codes = [320, 403, 404, 405, 406, 501, 502, 503, 504, 505, 506, 530, 540, 541];
+  const reported = typeof raw.code === 'number' ? raw.code : Number(/\b(\d{3}) \([A-Z-]+\)/.exec(message)?.[1]);
+  const replyCode = codes.includes(reported) ? reported : undefined;
+  let reason: FailureReason = 'unavailable';
+  if (replyCode === 403 || /ACCESS[-_]REFUSED/.test(message)) reason = 'access_refused';
+  else if (replyCode === 530 || /NOT[-_]ALLOWED/.test(message)) reason = 'not_allowed';
+  else if (replyCode === 404) reason = 'not_found';
+  else if (replyCode === 405) reason = 'resource_locked';
+  else if (replyCode === 406) reason = 'precondition_failed';
+  else if (raw.code === 'ECONNREFUSED') reason = 'connection_refused';
+  else if (raw.code === 'ETIMEDOUT' || /ETIMEDOUT|timed out/i.test(message)) reason = 'timeout';
+  else if (replyCode === 320 || ['ECONNRESET', 'EPIPE', 'ECONNABORTED'].includes(String(raw.code)) || /Socket closed abruptly|Connection closed/i.test(message)) reason = 'connection_closed';
+  return new BrokerUnavailable({ stage, reason, ...(replyCode ? { replyCode } : {}) });
+}
 export class BrokerTransport {
   readonly prefix: string;
   private connection!: ChannelModel;
@@ -16,16 +40,28 @@ export class BrokerTransport {
   private constructor(readonly config: Config) { this.prefix = `${config.BROKER_NAMESPACE}.${config.MONGODB_DATABASE}`; }
   queue(subscription: Subscription) { return `${this.prefix}.${subscription}`; }
   static async open(config: Config): Promise<BrokerTransport> {
+    return BrokerTransport.connect(config, true);
+  }
+  static async cleanTestTopology(config: Config): Promise<void> {
+    BrokerTransport.assertTestNamespace(config);
+    const broker = await BrokerTransport.connect(config, false);
+    try { await broker.deleteTestTopology(); } finally { await broker.close(); }
+  }
+  private static assertTestNamespace(config: Config) {
+    if (config.NODE_ENV !== 'test' || !/^[a-zA-Z][a-zA-Z0-9_]*_[a-f0-9]{32}$/.test(config.MONGODB_DATABASE)) throw new Error('Topology cleanup requires an isolated test namespace');
+  }
+  private static async connect(config: Config, declare: boolean): Promise<BrokerTransport> {
     const broker = new BrokerTransport(config);
+    let stage: OpenStage = 'connect';
     try {
       const url = new URL(config.RABBITMQ_URL); url.searchParams.set('heartbeat', '10');
       broker.connection = await connect(url.toString(), { timeout: config.DEPENDENCY_TIMEOUT_MS });
       broker.connection.on('error', () => broker.fail()); broker.connection.on('close', () => broker.fail());
-      broker.publisher = await broker.connection.createConfirmChannel();
+      stage = 'publisher'; broker.publisher = await broker.connection.createConfirmChannel();
       broker.publisher.on('error', () => broker.fail()); broker.publisher.on('close', () => broker.fail());
       broker.publisher.on('return', message => { const id = message.properties.correlationId; if (id) broker.pending.get(id)?.reject(new BrokerUnavailable()); });
-      await broker.topology(); return broker;
-    } catch { await broker.close(); throw new BrokerUnavailable(); }
+      if (declare) { stage = 'topology'; await broker.topology(); } return broker;
+    } catch (error) { await broker.close(); throw brokerOpenFailure(error, stage); }
   }
   private fail() { this.failed = true; for (const pending of this.pending.values()) pending.reject(new BrokerUnavailable()); }
   private async topology() {
@@ -82,7 +118,7 @@ export class BrokerTransport {
     if (this.connection) await this.connection.close().catch(() => {});
   }
   async deleteTestTopology() {
-    if (this.config.NODE_ENV !== 'test') throw new Error('Topology cleanup is test-only');
+    BrokerTransport.assertTestNamespace(this.config);
     for (const subscription of subscriptions) {
       for (let attempt = 1; attempt <= this.config.BROKER_RETRY_ATTEMPTS; attempt++) await this.publisher.deleteQueue(`${this.queue(subscription)}.retry.${attempt}`);
       await this.publisher.deleteQueue(this.queue(subscription)); await this.publisher.deleteQueue(`${this.queue(subscription)}.dead`);

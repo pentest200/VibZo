@@ -10,7 +10,7 @@ import { FastifyAdapter } from '@nestjs/platform-fastify';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import type { Config } from '@chat/config';
 import { AuthService, AttachmentService, AvatarService, ConversationService, MessageService, SyncService, SafetyService, CallService, DomainError, createMongoClient, inspectMongo, mongoPoolMetrics, recoveryReady } from '@chat/domain';
-import { createMetrics, createLogger, httpMetrics, beginRequestSpan, DrainTracker, operationalMetrics } from '@chat/observability';
+import { createMetrics, createLogger, httpMetrics, beginRequestSpan, DrainTracker, operationalMetrics, requestFailure } from '@chat/observability';
 import { AUTH, AuthController, sessionCookieName } from './auth.js';
 import { CONVERSATIONS, ConversationController } from './conversations.js';
 import { MESSAGES, MessageController } from './messages.js';
@@ -119,7 +119,11 @@ export async function createApi(config: Config) {
       const requestId = host.switchToHttp().getRequest<FastifyRequest>().id;
       const domain = error instanceof DomainError ? error : null;
       const status = domain?.status ?? (error instanceof HttpException ? error.getStatus() : typeof error === 'object' && error !== null && 'statusCode' in error && typeof error.statusCode === 'number' ? error.statusCode : 503);
-      if (!domain) logger.warn({ requestId, code: status >= 500 ? 'DEPENDENCY_UNAVAILABLE' : 'INVALID_REQUEST' }, 'request failed');
+      if (status >= 500) {
+        const request = host.switchToHttp().getRequest<FastifyRequest>(), path = request.url.split('?')[0]!;
+        const operation = path === '/api/v1/calls/invitations' ? 'call_invitations' : /^\/api\/v1\/calls\/[^/]+$/.test(path) ? 'call_detail' : path === '/api/v1/calls' ? 'call_list_or_start' : 'other';
+        logger.error({ code: 'DEPENDENCY_UNAVAILABLE', operation, elapsedMs: Math.round(reply.elapsedTime), ...requestFailure(error) }, 'request unavailable');
+      } else if (!domain) logger.warn({ requestId, code: 'INVALID_REQUEST' }, 'request failed');
       reply.code(status).send({ code: domain?.code ?? (status >= 500 ? 'UNAVAILABLE' : 'INVALID_INPUT'), message: domain?.message ?? 'The request could not be completed.', requestId, retryable: domain?.retryable ?? status >= 500 });
     }
   };

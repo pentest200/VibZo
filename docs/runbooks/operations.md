@@ -1,5 +1,7 @@
 # Operations and local verification
 
+For a dependency drill that fails before its cases run, retain the broker's safe open stage/reason/AMQP reply code and RabbitMQ logs/alarms. `pnpm test:integration:broker-setup` covers real transient handshake recovery, immediate authentication/topology rejection, partial-topology cleanup and cleanup continuation after broker failure. Dependency setup alone makes bounded transient connection attempts; production deadlines and deliberate outage checks are unchanged. A cleanup error is reported after the remaining resource cleanup is attempted. Never reset ordinary queues or volumes to make a fixture pass. See [broker setup CI evidence](../ci-broker-setup-evidence.md).
+
 Only the executed scope in [Phase 08 evidence](../phase-08-evidence.md) and the [final local gate](../phase-08e-evidence.md) is verified. Local telemetry/fault checks, encrypted restore, overlapping-release and interrupted-media drills passed. Phase 06 native push, Phase 07 end-to-end forced TURN/Linux browser webhook routing, and Linux application signals/production provisioning remain open. This document describes local implemented controls and a proposed production topology, not a deployed environment. Exact next tasks are in [the implementation plan](../../implementation_plan.md).
 
 ## Implemented tracing and metrics

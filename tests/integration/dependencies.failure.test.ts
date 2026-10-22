@@ -5,11 +5,11 @@ import { createServer as createTcpServer } from 'node:net';
 import type { Socket } from 'node:net';
 import { readFile, writeFile } from 'node:fs/promises';
 import { Long } from 'mongodb';
-import { OperationsMonitor, BrokerTransport, eventReference, replayDeadLetters, SyncService, boundedText, aggregateMediaMetrics } from '@chat/domain';
-import type { ControlEvent, OutboxRecord, UserRecord, ReplayFloor } from '@chat/domain';
+import { OperationsMonitor, eventReference, replayDeadLetters, SyncService, boundedText, aggregateMediaMetrics } from '@chat/domain';
+import type { BrokerTransport, ControlEvent, OutboxRecord, UserRecord, ReplayFloor } from '@chat/domain';
 import { operationalMetrics } from '@chat/observability';
 import { snapshotAgent, assertLocalInspection, telemetryDirectory } from '../../scripts/telemetry-runtime.js';
-import { messagingFixture, command, cleanBroker, waitFor } from './messaging-fixture.js';
+import { messagingFixture, command, cleanBroker, waitFor, openFixtureBroker, cleanupSteps } from './messaging-fixture.js';
 import { telemetryFixture, faultProxy, through, reservePort, roleProcess } from './telemetry-fixture.js';
 import type { DockerPortBindings } from './telemetry-fixture.js';
 
@@ -25,18 +25,21 @@ beforeAll(async () => {
   proxies['scanner'] = await faultProxy(f.config.CLAMAV_HOST, f.config.CLAMAV_PORT); proxies['smtp'] = await faultProxy(f.config.SMTP_HOST, f.config.SMTP_PORT);
   config = { ...f.config, DEPENDENCY_TIMEOUT_MS: 500, MONGODB_POOL_SIZE: 4, MONGODB_URI: through(f.config.MONGODB_URI, proxies['mongodb']!.port), REDIS_URL: through(f.config.REDIS_URL, proxies['redis']!.port), RABBITMQ_URL: through(f.config.RABBITMQ_URL, proxies['rabbitmq']!.port), RABBITMQ_MANAGEMENT_URL: through(f.config.RABBITMQ_MANAGEMENT_URL, proxies['rabbitHttp']!.port), S3_ENDPOINT: through(f.config.S3_ENDPOINT, proxies['storage']!.port), IMAGE_PROCESSOR_URL: through(f.config.IMAGE_PROCESSOR_URL, proxies['image']!.port), LIVEKIT_API_URL: through(f.config.LIVEKIT_API_URL, proxies['livekit']!.port), LIVEKIT_METRICS_URL: through(f.config.LIVEKIT_METRICS_URL, proxies['media']!.port), CLAMAV_PORT: proxies['scanner']!.port, SMTP_PORT: proxies['smtp']!.port };
   actor = await f.user('inspect'); conversation = (await f.service.createGroup(actor.token, randomUUID(), 'Dependency drill')).conversationId;
-  broker = await BrokerTransport.open(f.config); monitor = new OperationsMonitor(config, 500);
+  broker = await openFixtureBroker(f.config); monitor = new OperationsMonitor(config, 500);
   stack = await telemetryFixture();
 });
 afterAll(async () => {
   for (const proxy of Object.values(proxies)) proxy.setBlocked(false);
-  shutdown?.abort(); await agent?.catch(() => {});
-  if (stack) await writeFile(stack.directory + '/alerts.json', JSON.stringify(await stack.alerts()));
-  for (const role of ['gateway', 'api', 'worker'] as const) await processes[role]?.close();
-  await monitor?.close(); await broker?.close();
-  if (f) { await cleanBroker(f); await f.close(); }
-  for (const proxy of Object.values(proxies)) await proxy.close();
-  await stack?.close();
+  shutdown?.abort();
+  await cleanupSteps([
+    async () => agent?.catch(() => {}),
+    async () => { if (stack) await writeFile(stack.directory + '/alerts.json', JSON.stringify(await stack.alerts())); },
+    ...(['gateway', 'api', 'worker'] as const).map(role => async () => processes[role]?.close()),
+    async () => monitor?.close(), async () => broker?.close(),
+    async () => { if (f) await cleanBroker(f); }, async () => f?.close(),
+    ...Object.values(proxies).map(proxy => async () => proxy.close()),
+    async () => stack?.close(),
+  ]);
 });
 async function sample(name: string) { const text = await operationalMetrics(); return Number(new RegExp(`^${name} ([0-9.eE+-]+)$`, 'm').exec(text)?.[1] ?? 0); }
 async function post(input: ReturnType<typeof command>) {

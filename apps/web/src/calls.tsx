@@ -45,7 +45,9 @@ export function CallDock() {
     if (['end', 'cancel', 'leave'].includes(action)) ui.stop();
     setBusy(true); setError(''); try {
       await callMutation(ui.account, call.id, action, target); if (action === 'accept') ui.select(call.id, true);
-      await detail.refetch(); await invitations.refetch();
+      // Selection schedules the correct query on the next render. The current
+      // observer may still refer to null or to a different ongoing call.
+      if (ui.id === call.id) await detail.refetch(); await invitations.refetch();
     } catch (e) { setError(e instanceof Error ? e.message : 'Call action unavailable.'); } finally { setBusy(false); }
   }
   const c = detail.data, me = c?.participants.find(p => p.userId === ui.account.user.id), open = c && ['ringing', 'active'].includes(c.state);

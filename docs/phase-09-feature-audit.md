@@ -61,3 +61,17 @@ Source paths below are under `apps/web/src`; authority is always server enforced
 B1-B4 local automated/keyboard/reflow gates passed: **69 affected backend + 25 browser = 94 distinct checks**; [executed evidence](phase-09b-evidence.md). The four a11y cases cover 19 rendered states; two journey scans include real active WebRTC. No axe violations; the active-call caption rule returns a retained manual result. Native assistive technologies, captions/transcription, actual OS zoom/high-contrast/hardware/other browsers and every native dialog/device combination are not certified. The integrated journey and individual regressions provide concrete proof for the paths listed above, not every possible action permutation.
 
 Fixed CTA overlap, route/main/skip focus and titles, brand label/name, avatar group ARIA semantics, selected-inbox/input contrast, narrow control wrapping and reduced motion. Full direct/group/screenshare/native camera-denial browser gate passed. New group counters show real decoded frames/audio and both auxiliary contexts closing; no VP8 warning appeared in that run. The earlier timeout remains undiagnosed, with no timeout increase or assertion weakening. Native positive push, forced TURN/Linux browser webhook/platform gates remain open. 09C measurements and 09D isolated setup/demo/final deployment review are next.
+
+## Phase 09D current final audit — 2026-10-22
+
+This disposition supersedes the entry inventory's future-tense descriptions; evidence remains scoped to each report.
+
+| Area | Current evidence | Remaining acceptance |
+| --- | --- | --- |
+| UI/private avatars/integrated workflows | 09A/B committed; new 09D independent-user journey passed actual chat/replay/file/avatars/authority/media | Manual native assistive technology, hardware/other browsers and every error permutation are not certified |
+| Full clean local setup | Fresh frozen source install/build, baseline/scanner/decoder/browser/media and integrated journey, repeated nine-marker/restart equality, actual webhooks and checked cleanup passed | Linux routing, fresh OS/toolchain bootstrap and production setup remain outside this result |
+| Demo/calling | Actual offline/reload recovery, scanned bytes/avatars and generated WebRTC; strict owned TURN media/screenshare/rejoin passed | Physical devices, remote restrictive networks/TURN-TLS and Linux validation |
+| Measurements | Small modes, moderate chat and latest three-user media passed; all earlier failed/censored records retained | Earlier 503 cause unconfirmed, larger profiles remain censored; no backend capacity knee |
+| Operations/security/deployment | Current source boundaries and release prerequisites documented; earlier local drains/replay/restore/upgrade drills preserved | Hosted CI, precise remote broker/media cause, production provisioning/rotation/HA/orchestrator and independent-host/PITR/regional restore |
+
+[Final evidence](phase-09-final-evidence.md) records **95 affected passing checks**, the full fresh-setup scope, actual local TURN and preserved ordinary state; the earlier 64-check baseline checkpoint remains historical. [Security boundaries](architecture/security.md), [setup rehearsal](runbooks/setup-rehearsal.md) and [demo](runbooks/demo.md) are maintained procedures. Native push enrollment/provider/display, hosted Linux, manual accessibility/device and production acceptance remain open. Full Phase 09 and production readiness remain unverified; no public deployment was performed.

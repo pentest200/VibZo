@@ -21,6 +21,7 @@ jobs:
       - run: pnpm lint
       - run: pnpm test
       - run: pnpm test:load:harness
+      - run: pnpm test:setup:guards
       - run: pnpm test:foundation:http
       - run: pnpm infra:config
       - run: pnpm test:integration:infra
@@ -46,6 +47,7 @@ jobs:
         run: |
           docker --config .cache/docker compose -f infra/compose/compose.yaml --profile telemetry build telemetry-relay
           docker --config .cache/docker compose -f infra/compose/compose.yaml --profile telemetry pull collector prometheus alertmanager
+      - run: pnpm test:integration:broker-setup
       - run: pnpm test:failure:dependencies
       - run: pnpm test:integration:e2e-lifecycle
       - run: pnpm exec playwright install --with-deps chromium
@@ -86,6 +88,8 @@ jobs:
       - run: pnpm audit --prod --audit-level high
       - if: failure()
         run: pnpm exec tsx scripts/infra.ts diagnose
+      - if: failure()
+        run: docker --config .cache/docker compose -f infra/compose/compose.yaml exec -T rabbitmq rabbitmq-diagnostics -q alarms
       - if: failure()
         run: docker --config .cache/docker compose -f infra/compose/compose.yaml logs --tail 100
       - if: always()

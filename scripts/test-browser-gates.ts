@@ -6,7 +6,7 @@ import { resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { stripVTControlCharacters } from 'node:util';
 
-const gates = ['test:a11y', 'test:e2e:journey', 'test:e2e:auth', 'test:e2e:conversations', 'test:e2e:messaging', 'test:e2e:sync', 'test:e2e:attachments', 'test:e2e:avatars', 'test:e2e:safety', 'test:e2e:calls', 'test:e2e:upgrade'];
+const gates = ['test:e2e:ui', 'test:a11y', 'test:e2e:journey', 'test:e2e:auth', 'test:e2e:conversations', 'test:e2e:messaging', 'test:e2e:sync', 'test:e2e:attachments', 'test:e2e:avatars', 'test:e2e:safety', 'test:e2e:calls', 'test:e2e:upgrade'];
 const from = process.argv[2];
 if (process.argv.length > 3 || from && !gates.includes(from)) throw new Error('Usage: pnpm test:e2e [first-gate-name]');
 const pnpm = process.env['npm_execpath']; if (!pnpm) throw new Error('Run through pnpm so the pinned package manager is used');

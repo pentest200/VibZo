@@ -47,7 +47,7 @@
     "push:configure": "tsx scripts/configure-push.ts",
     "test:push:native": "tsx scripts/test-native-push.ts",
     "test:integration:calls": "vitest run --config tests/integration/calls.config.ts",
-    "test:e2e:calls": "playwright test --config tests/e2e/calls.config.ts",
+    "test:e2e:calls": "tsx scripts/test-calls.ts",
     "test:e2e:calls:relay": "tsx scripts/test-calls-relay.ts",
     "test:integration:operations": "vitest run --config tests/integration/operations.config.ts",
     "infra:telemetry": "tsx scripts/infra.ts telemetry",
@@ -67,7 +67,8 @@
     "test:load:harness": "vitest run --config tests/load/harness.config.ts",
     "test:load:chat": "tsx scripts/test-load.ts chat",
     "test:load:media": "tsx scripts/test-load.ts media",
-    "test:load:combined": "tsx scripts/test-load.ts combined"
+    "test:load:combined": "tsx scripts/test-load.ts combined",
+    "test:e2e:ui": "playwright test --config tests/e2e/ui.config.ts"
   },
   "devDependencies": {
     "@aws-sdk/client-s3": "3.1150.0",

@@ -10,7 +10,7 @@ test('independent users create direct and group conversations, accept invitation
     await expect(page.locator('.conversation-heading h2')).toHaveText('bob'); await expect(page.getByText('No messages have been sent here yet.')).toBeVisible();
     const directUrl = page.url(); await second.getByRole('button', { name: 'Refresh inbox' }).click();
     await expect(second.locator('.inbox-list')).toContainText('alice');
-    await page.getByLabel('Group name', { exact: true }).fill('Weekend draft'); await page.getByRole('button', { name: 'Create group', exact: true }).click();
+    await page.getByRole('button', { name: 'New group', exact: true }).click(); await page.getByLabel('Group name', { exact: true }).fill('Weekend draft'); await page.getByRole('button', { name: 'Create group', exact: true }).click();
     await expect(page.locator('.conversation-heading h2')).toHaveText('Weekend draft'); const groupUrl = page.url();
     await page.getByLabel('Group title', { exact: true }).fill('Weekend plans'); await page.getByRole('button', { name: 'Save group name' }).click();
     await expect(page.locator('.conversation-heading h2')).toHaveText('Weekend plans');
@@ -43,7 +43,7 @@ test('independent users create direct and group conversations, accept invitation
     await expect(page.locator('.inbox-list')).toContainText('Weekend plans');
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.screenshot({ path: '.cache/qa/conversations-mobile.png', fullPage: true });
-    await page.getByRole('button', { name: 'Leave group', exact: true }).click(); await expect(page).toHaveURL(/\/chat$/);
+    await page.getByRole('button', { name: 'Conversation info', exact: true }).click(); await page.getByRole('button', { name: 'Leave group', exact: true }).click(); await expect(page).toHaveURL(/\/chat$/);
     expect(await page.evaluate(() => Object.keys(localStorage))).toEqual([]);
   } finally { await bobContext.close(); await carolContext.close(); }
 });

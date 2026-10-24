@@ -1,3 +1,4 @@
+import { browserEndpoints } from './endpoints.js';
 import { test, expect } from '@playwright/test';
 import { accessible, reflow } from './accessibility.js';
 import { login, register, search } from './chat-fixture.js';
@@ -29,7 +30,7 @@ test('account reflows at 320px, keeps the CTA clear and exposes privacy, deletio
   expect(await page.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches)).toBe(true);
   for (const width of [1280, 390, 320]) {
     await page.setViewportSize({ width, height: 900 }); await reflow(page);
-    const cta = page.getByRole('link', { name: 'Open conversations', exact: true }), paragraph = page.locator('.coming p');
+    const cta = page.getByRole('link', { name: 'Open conversations', exact: true }), paragraph = page.locator('.account-heading');
     const linkBox = await cta.boundingBox(), textBox = await paragraph.boundingBox();
     expect(linkBox && textBox && linkBox.y >= textBox.y + textBox.height).toBe(true);
     await accessible(page, info, `account-${width}`); await page.screenshot({ path: `.cache/qa/a11y-account-${width}.png`, fullPage: true });
@@ -48,7 +49,7 @@ test('account reflows at 320px, keeps the CTA clear and exposes privacy, deletio
 test('chat, report forms and group controls stay keyboard accessible at mobile widths', async ({ page, request }, info) => {
   const owner = await register(request, 'accesschat'), peer = await register(request, 'accesspeer'); await login(page, owner.email);
   await accessible(page, info, 'empty-inbox');
-  await page.getByLabel('Group name', { exact: true }).fill('Accessible group'); await page.getByRole('button', { name: 'Create group', exact: true }).click();
+  await page.getByRole('button', { name: 'New group', exact: true }).click(); await page.getByLabel('Group name', { exact: true }).fill('Accessible group'); await page.getByRole('button', { name: 'Create group', exact: true }).click();
   await expect(page.getByLabel('Message', { exact: true })).toBeVisible();
   await page.getByLabel('Message', { exact: true }).fill('Keyboard and privacy audit'); await page.getByRole('button', { name: 'Send message', exact: true }).click();
   await expect(page.locator('.message-list')).toContainText('Keyboard and privacy audit');
@@ -63,14 +64,16 @@ test('chat, report forms and group controls stay keyboard accessible at mobile w
     await page.screenshot({ path: `.cache/qa/a11y-chat-${width}.png`, fullPage: true });
   }
   const jump = page.getByRole('link', { name: 'Skip to conversation', exact: true }); await jump.focus(); await page.keyboard.press('Enter'); await expect(page.locator('#conversation-pane')).toBeFocused();
+  await page.getByRole('button', { name: 'Conversation info', exact: true }).click();
   const settings = page.getByText('Group settings', { exact: true }); await settings.focus(); await page.keyboard.press('Space'); await expect(page.getByLabel('Group title', { exact: true })).not.toBeVisible();
   await page.keyboard.press('Space'); await expect(page.getByLabel('Group title', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Close conversation info', exact: true }).click();
   await page.getByRole('button', { name: 'Submit report', exact: true }).click(); await expect(page.getByRole('status').filter({ hasText: 'Report submitted' })).toBeVisible();
 });
 
 test('unverified accounts disclose restricted actions and retain verification recovery', async ({ page, request }, info) => {
   const email = `unverified_${crypto.randomUUID()}@example.test`;
-  expect((await request.post('/api/v1/auth/register', { headers: { Origin: 'http://localhost:5173' }, data: { email, username: `unverified_${crypto.randomUUID().slice(0, 8)}`, displayName: 'Unverified account', password: 'Conversation-browser-password-123' } })).status()).toBe(202);
+  expect((await request.post('/api/v1/auth/register', { headers: { Origin: browserEndpoints().origin }, data: { email, username: `unverified_${crypto.randomUUID().slice(0, 8)}`, displayName: 'Unverified account', password: 'Conversation-browser-password-123' } })).status()).toBe(202);
   await page.goto('/login'); await page.getByLabel('Email', { exact: true }).fill(email); await page.getByLabel('Password', { exact: true }).fill('Conversation-browser-password-123'); await page.getByRole('button', { name: 'Sign in', exact: true }).click();
   await expect(page).toHaveURL(/\/account$/); await expect(page.getByRole('button', { name: 'Send a new verification email', exact: true })).toBeEnabled();
   await expect(page.getByRole('region', { name: 'Avatar settings', exact: true })).toContainText('Verify your email'); await expect(page.getByRole('link', { name: 'Open conversations', exact: true })).toHaveCount(0);

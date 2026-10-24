@@ -1,3 +1,4 @@
+import { browserEndpoints } from './endpoints.js';
 import { test, expect } from '@playwright/test';
 import { login, register, search } from './chat-fixture.js';
 import { png } from '../fixtures/png.js';
@@ -12,7 +13,7 @@ test('two users upload checked private avatars, opt in, revoke, replace and remo
     await page.goto('/account');
     const account = await (await page.request.get('/api/v1/auth/session')).json() as { user: { id: string }; csrfToken: string };
     const peer = await (await other.request.get('/api/v1/auth/session')).json() as { csrfToken: string };
-    const access = () => other.request.post(`/api/v1/avatars/${account.user.id}/download`, { headers: { Origin: 'http://localhost:5173', 'X-CSRF-Token': peer.csrfToken }, data: { conversationId: conversation } });
+    const access = () => other.request.post(`/api/v1/avatars/${account.user.id}/download`, { headers: { Origin: browserEndpoints().origin, 'X-CSRF-Token': peer.csrfToken }, data: { conversationId: conversation } });
     const panel = page.getByRole('region', { name: 'Avatar settings', exact: true });
     const sharing = panel.getByRole('checkbox', { name: 'Share my avatar with active conversation members', exact: true });
     async function share(value: boolean) {

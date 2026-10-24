@@ -1,9 +1,10 @@
+import { browserEndpoints } from './endpoints.js';
 import { test, expect } from '@playwright/test';
 import { createECDH, randomBytes, randomUUID } from 'node:crypto';
 import { loadConfig } from '@chat/config';
 import { createMongoClient } from '@chat/domain';
 import type { UserRecord } from '@chat/domain';
-import { login, register, search } from './chat-fixture.js';
+import { login, register, search, messageActions } from './chat-fixture.js';
 test('two users report, a protected moderator removes the reference, and deletion clears all sessions', async ({ page, browser, request }) => {
   const alice = await register(request, 'safetyalice'), bob = await register(request, 'safetybob'), mod = await register(request, 'safetymod');
   const name = process.env['E2E_DATABASE']; if (!name?.startsWith('chat_e2e_auth_')) throw new Error('Isolated database required');
@@ -16,7 +17,7 @@ test('two users report, a protected moderator removes the reference, and deletio
     await page.getByLabel('Message', { exact: true }).fill('Please review this specific message.'); await page.getByRole('button', { name: 'Send message', exact: true }).click();
     await expect(page.locator('.message-list')).toContainText('Please review this specific message.'); const url = page.url();
     await other.goto(url); await expect(other.locator('.message-list')).toContainText('Please review this specific message.', { timeout: 25000 });
-    await other.getByRole('button', { name: 'Report message', exact: true }).click(); await other.getByLabel('Report reason').selectOption('harassment'); await other.getByRole('button', { name: 'Submit report', exact: true }).click();
+    await messageActions(other); await other.getByRole('button', { name: 'Report message', exact: true }).click(); await other.getByLabel('Report reason').selectOption('harassment'); await other.getByRole('button', { name: 'Submit report', exact: true }).click();
     await expect(other.getByRole('status').filter({ hasText: 'Report submitted for review.' })).toBeVisible();
     await moderator.goto('/account'); await expect(moderator.getByLabel('Moderation reports')).toContainText('harassment');
     await moderator.getByRole('button', { name: 'Remove reported message', exact: true }).click();
@@ -43,7 +44,7 @@ test('explicit browser permission denial preserves the in-app unread fallback wi
   const devtools = await context.newCDPSession(page);
   const { targetInfo } = await devtools.send('Target.getTargetInfo');
   if (!targetInfo.browserContextId) throw new Error('An isolated browser context is required');
-  await devtools.send('Browser.setPermission', { browserContextId: targetInfo.browserContextId, permission: { name: 'notifications' }, setting: 'denied', origin: 'http://localhost:5173' });
+  await devtools.send('Browser.setPermission', { browserContextId: targetInfo.browserContextId, permission: { name: 'notifications' }, setting: 'denied', origin: browserEndpoints().origin });
   expect(await page.evaluate(() => Notification.permission)).toBe('denied');
   let subscriptions = 0; page.on('request', request => { if (request.url().endsWith('/safety/subscriptions') && request.method() === 'POST') subscriptions++; });
   await page.getByRole('button', { name: 'Enable notifications on this device', exact: true }).click();

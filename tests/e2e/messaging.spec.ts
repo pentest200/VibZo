@@ -1,5 +1,6 @@
+import { browserEndpoints } from './endpoints.js';
 import { test, expect } from '@playwright/test';
-import { login, register, search } from './chat-fixture.js';
+import { login, register, search, messageActions } from './chat-fixture.js';
 test('two real users send, reply, reconcile a lost acceptance response and retain history after reload', async ({ page, browser, request }) => {
   const alice = await register(request, 'sender'), bob = await register(request, 'receiver'), context = await browser.newContext(), other = await context.newPage();
   try {
@@ -10,7 +11,7 @@ test('two real users send, reply, reconcile a lost acceptance response and retai
     await expect(page.locator('.composer')).toContainText('Accepted by the server'); await expect(page.locator('.message-list')).toContainText('Hello from a durable send.');
     await other.getByRole('button', { name: 'Refresh inbox' }).click(); await other.locator('.inbox-link').filter({ hasText: 'sender' }).click();
     await expect(other.locator('.message-list')).toContainText('Hello from a durable send.');
-    await other.getByRole('button', { name: 'Reply to Hello from a durable send.' }).click(); await other.getByLabel('Message', { exact: true }).fill('A real reply.');
+    await messageActions(other, 'Hello from a durable send.'); await other.getByRole('button', { name: 'Reply to Hello from a durable send.' }).click(); await other.getByLabel('Message', { exact: true }).fill('A real reply.');
     await other.getByRole('button', { name: 'Send message', exact: true }).click(); await expect(page.locator('.message-list')).toContainText('A real reply.', { timeout: 15000 });
     let commandId = '', lost = false, originalAcceptance: unknown;
     const transmittedIds: string[] = [];
@@ -40,9 +41,9 @@ test('two real users send, reply, reconcile a lost acceptance response and retai
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({ path: '.cache/qa/messaging-mobile.png', fullPage: true });
     await other.goto(url); await expect(other.locator('.message-list li')).toHaveCount(3, { timeout: 25000 });
-    await expect.poll(async () => (await request.get('http://127.0.0.1:3002/health/ready')).status()).toBe(200);
-    await expect.poll(async () => (await (await request.get('http://127.0.0.1:3002/metrics')).text()).includes('chat_outbox_pending 0\n')).toBe(true);
-    const metrics = await (await request.get('http://127.0.0.1:3002/metrics')).text();
+    await expect.poll(async () => (await request.get(`http://127.0.0.1:${browserEndpoints().worker}/health/ready`)).status()).toBe(200);
+    await expect.poll(async () => (await (await request.get(`http://127.0.0.1:${browserEndpoints().worker}/metrics`)).text()).includes('chat_outbox_pending 0\n')).toBe(true);
+    const metrics = await (await request.get(`http://127.0.0.1:${browserEndpoints().worker}/metrics`)).text();
     expect(Number(metrics.match(/chat_outbox_publications_total (\d+)/)?.[1] ?? '0')).toBeGreaterThan(0);
   } finally { await context.close(); }
 });

@@ -1,3 +1,4 @@
+import { browserEndpoints } from './endpoints.js';
 import { test, expect, chromium } from '@playwright/test';
 import type { Page, Browser } from '@playwright/test';
 import { login, register, search } from './chat-fixture.js';
@@ -82,6 +83,7 @@ test('two independent users exchange real generated audio/video, control devices
     await login(page, alice.email); await login(second.page, bob.email);
     await search(page, bob.username); await page.getByRole('button', { name: `Open conversation with ${bob.username}`, exact: true }).click();
     await expect(page.getByRole('button', { name: 'Video call', exact: true })).toBeEnabled();
+    await second.page.setViewportSize({ width: 390, height: 844 }); await expect(second.page.locator('.chat-sidebar')).toBeVisible();
     await page.getByRole('button', { name: 'Video call', exact: true }).click();
     await expect(second.page.locator('.incoming-call')).toContainText('Incoming video call');
     await second.page.getByRole('button', { name: 'Accept call', exact: true }).click();
@@ -111,6 +113,8 @@ test('two independent users exchange real generated audio/video, control devices
     await page.getByRole('button', { name: 'End call for everyone', exact: true }).click();
     await expect(second.page.locator('.call-tracks video')).toHaveCount(0, { timeout: 15000 });
     await expect(page.getByRole('region', { name: 'Current call', exact: true }).getByRole('status').first()).toHaveText('ended', { timeout: 15000 });
+    await page.locator('.call-launcher > details > summary').click(); await expect(page.locator('.call-history')).toContainText('Video · ended', { timeout: 10000 }); await page.locator('.call-launcher > details > summary').click();
+    await page.getByRole('button', { name: 'Close call', exact: true }).click(); await expect(page.locator('.call-panel')).toHaveCount(0);
   } finally { await second.context.close(); }
 });
 test('three users share a group call and moderator removal forces an authorized room change', async ({ page, browser, request }, info) => {
@@ -118,7 +122,7 @@ test('three users share a group call and moderator removal forces an authorized 
   const second = await otherPage(browser), third = await otherPage(browser); await instrument(page);
   try {
     await login(page, alice.email); await login(second.page, bob.email); await login(third.page, carol.email);
-    await page.getByLabel('Group name', { exact: true }).fill('Media group'); await page.getByRole('button', { name: 'Create group', exact: true }).click();
+    await page.getByRole('button', { name: 'New group', exact: true }).click(); await page.getByLabel('Group name', { exact: true }).fill('Media group'); await page.getByRole('button', { name: 'Create group', exact: true }).click();
     for (const [user, target] of [[bob, second.page], [carol, third.page]] as const) {
       await search(page, user.username, true); await page.getByRole('button', { name: `Invite with ${user.username}`, exact: true }).click();
       await target.getByRole('button', { name: 'Refresh inbox', exact: true }).click(); await target.getByRole('button', { name: 'Accept Media group', exact: true }).click();
@@ -147,7 +151,7 @@ test('native camera denial keeps a listener connected and exposes a retry contro
   try {
     const cdp = await second.context.newCDPSession(second.page), { targetInfo } = await cdp.send('Target.getTargetInfo');
     if (!targetInfo.browserContextId) throw new Error('Expected an isolated browser permission context');
-    await cdp.send('Browser.setPermission', { permission: { name: 'camera' }, setting: 'denied', origin: 'http://localhost:5173', browserContextId: targetInfo.browserContextId });
+    await cdp.send('Browser.setPermission', { permission: { name: 'camera' }, setting: 'denied', origin: browserEndpoints().origin, browserContextId: targetInfo.browserContextId });
     await login(page, alice.email); await login(second.page, bob.email);
     expect(await second.page.evaluate(async () => (await navigator.permissions.query({ name: 'camera' as PermissionName })).state)).toBe('denied');
     await search(page, bob.username); await page.getByRole('button', { name: `Open conversation with ${bob.username}`, exact: true }).click();

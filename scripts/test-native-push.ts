@@ -2,7 +2,6 @@ import { createServer } from 'node:http';
 import { createECDH, randomUUID } from 'node:crypto';
 import { mkdir, realpath, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
-import { chromium, firefox } from '@playwright/test';
 import { loadConfig } from '@chat/config';
 import { pushSubscriptionSchema } from '@chat/contracts';
 import { webPushProvider } from '@chat/domain';
@@ -10,6 +9,9 @@ const selected = process.argv[2] ?? 'chrome';
 if (process.argv.length > 3 || !['chrome', 'firefox', 'chromium'].includes(selected) || process.env['NODE_ENV'] === 'production') throw new Error('Use test:push:native [chrome|firefox|chromium] locally');
 if (await realpath('.cache') !== resolve('.cache')) throw new Error('Native push cache cannot redirect');
 process.env['PLAYWRIGHT_BROWSERS_PATH'] ??= resolve('.cache/ms-playwright');
+// Playwright resolves its browser registry when imported. Set the local cache
+// first so an installed Firefox is found without an external shell override.
+const { chromium, firefox } = await import('@playwright/test');
 const directory = resolve('.cache', `native-push-${randomUUID()}`); await mkdir(directory, { mode: 0o700 });
 console.info('Native push result directory:', directory);
 const key = createECDH('prime256v1'); key.generateKeys();

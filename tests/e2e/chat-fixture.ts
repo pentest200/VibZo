@@ -27,6 +27,11 @@ export async function login(page: Page, email: string) {
   await page.getByRole('link', { name: 'Open conversations' }).click(); await expect(page.getByRole('heading', { name: 'Conversations', exact: true })).toBeVisible();
 }
 export async function search(page: Page, username: string, invite = false) {
+  if (!invite) await page.getByRole('button', { name: 'New message', exact: true }).click();
   const scope = invite ? page.locator('.chat-main') : page.locator('.chat-sidebar');
   await scope.getByLabel('Username prefix').fill(username); await scope.getByRole('button', { name: 'Search people' }).click();
+}
+export async function messageActions(page: Page, text?: string) {
+  const rows = page.locator('.message-list > li.message');
+  await (text ? rows.filter({ hasText: text }).first() : rows.first()).hover();
 }

@@ -56,6 +56,9 @@ jobs:
       - run: pnpm test:a11y
         env:
           PLAYWRIGHT_BROWSERS_PATH: .cache/ms-playwright
+      - run: pnpm test:e2e:ui
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: .cache/ms-playwright
       - run: pnpm test:e2e:auth
         env:
           PLAYWRIGHT_BROWSERS_PATH: .cache/ms-playwright

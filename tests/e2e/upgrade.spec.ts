@@ -1,3 +1,4 @@
+import { browserEndpoints } from './endpoints.js';
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 import { loadConfig } from '@chat/config';
@@ -80,7 +81,7 @@ test('survives a killed SFU, rotates its room and visibly rejoins only authorize
     await recordMedia(page, info, 'upgrade-before-owner'); await recordMedia(other, info, 'upgrade-before-peer');
     const before = await db.collection<CallRecord>('calls').findOne({ open: true }); expect(before).toBeTruthy();
     const account = await (await stranger.request.get('/api/v1/auth/session')).json() as { csrfToken: string };
-    const deny = () => stranger.request.post(`/api/v1/calls/${before!._id}/join`, { headers: { Origin: 'http://localhost:5173', 'X-CSRF-Token': account.csrfToken }, data: {} });
+    const deny = () => stranger.request.post(`/api/v1/calls/${before!._id}/join`, { headers: { Origin: browserEndpoints().origin, 'X-CSRF-Token': account.csrfToken }, data: {} });
     expect((await deny()).status()).toBe(403);
     const interruptedAt = performance.now();
     expect(await controlUpgradeMedia('kill')).toMatchObject({ Running: false, ExitCode: 137 }); killed = true;

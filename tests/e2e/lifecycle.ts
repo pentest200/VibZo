@@ -7,7 +7,7 @@ import { browserEndpoints } from './endpoints.js';
 export interface FixtureIdentity { database: string; runId: string }
 function fixtureConfig(identity: FixtureIdentity): Config {
   if (!/^chat_e2e_auth_[a-f0-9]{32}$/.test(identity.database) || !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(identity.runId)) throw new Error('Invalid isolated browser fixture identity');
-  return loadConfig({ ...process.env, NODE_ENV: 'test', MONGODB_DATABASE: identity.database });
+  return loadConfig({ ...process.env, NODE_ENV: 'test', MONGODB_DATABASE: identity.database, WEB_ORIGIN: browserEndpoints().origin });
 }
 export function fixtureIdentity(): FixtureIdentity {
   const identity = { database: process.env['E2E_DATABASE'] ?? '', runId: process.env['E2E_RUN_ID'] ?? '' };

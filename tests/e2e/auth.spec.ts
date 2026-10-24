@@ -1,3 +1,4 @@
+import { browserEndpoints } from './endpoints.js';
 import { randomUUID } from 'node:crypto';
 import { test, expect } from '@playwright/test';
 import type { APIRequestContext, Page } from '@playwright/test';
@@ -18,7 +19,7 @@ async function emailLink(request: APIRequestContext, recipient: string, purpose:
       if (!message.Subject.toLowerCase().includes(purpose === 'verify' ? 'verify' : 'reset')) continue;
       const detail = await request.get(`${mailpitOrigin}/api/v1/message/${message.ID}`);
       const body = await detail.json() as { Text: string };
-      const match = body.Text.match(new RegExp(`http://localhost:5173/${purpose}#token=[A-Za-z0-9_-]{43}`));
+      const match = body.Text.match(new RegExp(`http://localhost:${browserEndpoints().web}/${purpose}#token=[A-Za-z0-9_-]{43}`));
       if (match) { link = match[0]; return true; }
     }
     return false;

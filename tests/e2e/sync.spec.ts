@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
-import { login, register, search } from './chat-fixture.js';
+import { login, register, search, messageActions } from './chat-fixture.js';
 import { randomUUID } from 'node:crypto';
 import { loadConfig } from '@chat/config';
 import { AuthService, SyncService, createMongoClient } from '@chat/domain';
@@ -28,18 +28,18 @@ test('live inbox discovery, edits, offline reaction repair, explicit reads and d
     await other.locator('.inbox-link').filter({ hasText: 'livealice' }).click();
     await send(page, 'Live original'); await expect(other.locator('.message-list')).toContainText('Live original', { timeout: 8000 });
     await context.setOffline(true);
-    await other.getByRole('button', { name: 'Like 0', exact: true }).click();
+    await messageActions(other, 'Live original'); await other.getByRole('button', { name: 'Like 0', exact: true }).click();
     await other.getByRole('button', { name: 'Mark messages read', exact: true }).click();
     await expect.poll(async () => (await pending(other)).some(row => row.command.type === 'mutation')).toBe(true);
     page.once('dialog', dialog => { void dialog.accept('Edited while the other device was offline'); });
-    await page.getByRole('button', { name: 'Edit message', exact: true }).click();
+    await messageActions(page); await page.getByRole('button', { name: 'Edit message', exact: true }).click();
     await expect(page.locator('.message-list')).toContainText('Edited while the other device was offline');
     await context.setOffline(false);
     await expect(other.locator('.message-list')).toContainText('Edited while the other device was offline', { timeout: 25000 });
     await expect(page.getByRole('button', { name: 'Like 1', exact: true })).toBeVisible({ timeout: 25000 });
     await expect(page.locator('.message-list small').getByText('Read', { exact: true })).toBeVisible({ timeout: 25000 });
     await context.setOffline(true);
-    page.once('dialog', dialog => { void dialog.accept(); }); await page.getByRole('button', { name: 'Delete message', exact: true }).click();
+    page.once('dialog', dialog => { void dialog.accept(); }); await messageActions(page); await page.getByRole('button', { name: 'Delete message', exact: true }).click();
     await expect(page.locator('.message-list')).toContainText('Message deleted'); await context.setOffline(false);
     await expect(other.locator('.message-list')).toContainText('Message deleted', { timeout: 25000 });
     await page.screenshot({ path: '.cache/qa/sync-desktop.png', fullPage: true });
@@ -50,7 +50,7 @@ test('live inbox discovery, edits, offline reaction repair, explicit reads and d
 
 test('offline commands survive reload, two tabs reuse one command and logout purges private stores', async ({ page, request }) => {
   const actor = await register(request, 'offlineuser'); await login(page, actor.email);
-  await page.getByLabel('Group name', { exact: true }).fill('Offline queue'); await page.getByRole('button', { name: 'Create group', exact: true }).click();
+  await page.getByRole('button', { name: 'New group', exact: true }).click(); await page.getByLabel('Group name', { exact: true }).fill('Offline queue'); await page.getByRole('button', { name: 'Create group', exact: true }).click();
   await expect(page.getByLabel('Message', { exact: true })).toBeVisible(); const url = page.url();
   let blocked = true; const transmitted: string[] = [];
   await page.context().route('**/api/v1/messages', async route => { if (blocked) { await route.abort('failed'); return; } transmitted.push((route.request().postDataJSON() as { clientMessageId: string }).clientMessageId); await route.continue(); });
@@ -76,7 +76,7 @@ test('offline commands survive reload, two tabs reuse one command and logout pur
     await send(second, 'A newer projection from another tab'); await expect(second.locator('.message-list')).toContainText('A newer projection from another tab');
     release(); await expect(page.locator('.message-list')).toContainText('A newer projection from another tab');
   } finally { release(); await page.unroute('**/api/v1/sync/conversations/*/snapshot'); }
-  await page.getByRole('link', { name: 'Account & privacy' }).click(); await page.getByRole('button', { name: 'Sign out', exact: true }).click();
+  await page.locator('.main-menu > summary').click(); await page.getByRole('link', { name: 'Account & privacy' }).click(); await page.getByRole('button', { name: 'Sign out', exact: true }).click();
   await expect.poll(async () => (await pending(second)).length).toBe(0); await expect(second).toHaveURL(/\/login$/);
   await expect.poll(async () => second.evaluate(async () => {
     const db = await new Promise<IDBDatabase>(resolve => { const request = indexedDB.open('commonroom-sync-v1'); request.onsuccess = () => resolve(request.result); });
@@ -91,7 +91,7 @@ test('offline commands survive reload, two tabs reuse one command and logout pur
 
 test('older history replaces the bounded window and an expired replay cursor resets from an authorized snapshot', async ({ page, request }) => {
   const actor = await register(request, 'historywindow'); await login(page, actor.email);
-  await page.getByLabel('Group name', { exact: true }).fill('History windows'); await page.getByRole('button', { name: 'Create group', exact: true }).click();
+  await page.getByRole('button', { name: 'New group', exact: true }).click(); await page.getByLabel('Group name', { exact: true }).fill('History windows'); await page.getByRole('button', { name: 'Create group', exact: true }).click();
   await expect(page.getByLabel('Message', { exact: true })).toBeVisible(); const id = page.url().split('/').at(-1)!;
   const config = loadConfig({ ...process.env, NODE_ENV: 'test', MONGODB_DATABASE: process.env['E2E_DATABASE']! }), client = createMongoClient(config), auth = new AuthService(config, client, client.db(config.MONGODB_DATABASE)), service = new SyncService(auth);
   const token = (await page.context().cookies()).find(cookie => cookie.name === 'commonroom_session')!.value;
@@ -117,7 +117,7 @@ test('storage denial discloses memory-only pending commands', async ({ page, req
   const actor = await register(request, 'nostorage');
   await page.addInitScript(() => { Object.defineProperty(window, 'indexedDB', { get() { throw new DOMException('Storage disabled', 'SecurityError'); } }); });
   await login(page, actor.email); await expect(page.getByText('Storage unavailable: pending commands stay only in this page', { exact: false })).toBeVisible();
-  await page.getByLabel('Group name', { exact: true }).fill('Memory queue'); await page.getByRole('button', { name: 'Create group', exact: true }).click();
+  await page.getByRole('button', { name: 'New group', exact: true }).click(); await page.getByLabel('Group name', { exact: true }).fill('Memory queue'); await page.getByRole('button', { name: 'Create group', exact: true }).click();
   await page.route('**/api/v1/messages', route => route.abort('failed')); await send(page, 'Only in this page');
   await expect(page.getByLabel('Pending commands')).toContainText('Only in this page');
   await expect(page.locator('.composer')).toContainText('Refreshing can discard unconfirmed commands');
@@ -144,7 +144,7 @@ test('repairs deliberately lost Redis publications while the recipient socket st
 test('a real live burst overflows the client hint buffer and recovers without advancing past unapplied state', async ({ page, request }) => {
   const actor = await register(request, 'overflowuser'); let stalled = false, frames = 0, overflowClosed = false;
   page.on('websocket', socket => { socket.on('framereceived', event => { if (stalled && String(event.payload).includes('sync:hint')) frames++; }); socket.on('close', () => { if (stalled && frames >= 9) overflowClosed = true; }); });
-  await login(page, actor.email); await page.getByLabel('Group name', { exact: true }).fill('Overflow recovery'); await page.getByRole('button', { name: 'Create group', exact: true }).click();
+  await login(page, actor.email); await page.getByRole('button', { name: 'New group', exact: true }).click(); await page.getByLabel('Group name', { exact: true }).fill('Overflow recovery'); await page.getByRole('button', { name: 'Create group', exact: true }).click();
   await expect(page.getByLabel('Message', { exact: true })).toBeVisible(); const id = page.url().split('/').at(-1)!;
   const config = loadConfig({ ...process.env, NODE_ENV: 'test', MONGODB_DATABASE: process.env['E2E_DATABASE']! }), client = createMongoClient(config), auth = new AuthService(config, client, client.db(config.MONGODB_DATABASE)), service = new SyncService(auth);
   const token = (await page.context().cookies()).find(cookie => cookie.name === 'commonroom_session')!.value;

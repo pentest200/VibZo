@@ -5,15 +5,16 @@ import { Link } from 'react-router-dom';
 import { callListSchema, callSchema, callStatusSchema } from '@chat/contracts';
 import type { AuthSession, CallView } from '@chat/contracts';
 import { api } from './api.js';
+import { Icon } from './ui.js';
 
 const CallMedia = lazy(() => import('./call-media.js'));
 
-interface CallUI { account: AuthSession; id: string | null; select: (id: string, join?: boolean) => void; joinWanted: boolean; stop: () => void }
+interface CallUI { account: AuthSession; id: string | null; select: (id: string, join?: boolean) => void; joinWanted: boolean; stop: () => void; dismiss: () => void }
 const Context = createContext<CallUI | null>(null);
 function useCalls() { const value = useContext(Context); if (!value) throw new Error('Call controls unavailable'); return value; }
 export function CallUIProvider({ account, children }: { account: AuthSession; children: ReactNode }) {
   const [id, setId] = useState<string | null>(null), [joinWanted, setJoinWanted] = useState(false);
-  return <Context.Provider value={{ account, id, joinWanted, select: (id, join = false) => { setId(id); setJoinWanted(join); }, stop: () => setJoinWanted(false) }}>{children}</Context.Provider>;
+  return <Context.Provider value={{ account, id, joinWanted, select: (id, join = false) => { setId(id); setJoinWanted(join); }, stop: () => setJoinWanted(false), dismiss: () => { setId(null); setJoinWanted(false); } }}>{children}</Context.Provider>;
 }
 function useCallStatus(account: AuthSession) { return useQuery({ queryKey: ['call-status', account.user.id], queryFn: async () => callStatusSchema.parse(await api('/calls/status')), refetchInterval: 15000, retry: false }); }
 function callMutation(account: AuthSession, id: string, action: string, targetUserId?: string) { return api(`/calls/${id}/actions`, { method: 'POST', csrf: account.csrfToken, body: { commandId: crypto.randomUUID(), action, ...(targetUserId ? { targetUserId } : {}) } }); }
@@ -30,9 +31,9 @@ export function CallLauncher({ conversationId, blocked }: { conversationId: stri
   }
   return <section className="call-launcher" aria-label="Conversation calls">
     <h3>Calls</h3>{status.isPending ? <p role="status">Checking calling availability…</p> : status.isError || !status.data?.available ? <p className="hint">Calling is currently unavailable. Messaging is still available.</p> : null}
-    <div className="control-row"><button disabled={busy || blocked || !status.data?.available || !!current} onClick={() => { void start('voice'); }}>Voice call</button><button disabled={busy || blocked || !status.data?.available || !!current} onClick={() => { void start('video'); }}>Video call</button>{current && <button className="button-secondary" onClick={() => ui.select(current.id)}>Open current call</button>}</div>
+    <div className="control-row">{!current && <><button className="icon-button" aria-label="Voice call" title={status.data?.available ? 'Voice call' : 'Calling is currently unavailable'} disabled={busy || blocked || !status.data?.available} onClick={() => { void start('voice'); }}><Icon name="phone" size={22} /></button><button className="icon-button" aria-label="Video call" title={status.data?.available ? 'Video call' : 'Calling is currently unavailable'} disabled={busy || blocked || !status.data?.available} onClick={() => { void start('video'); }}><Icon name="video" size={23} /></button></>}{current && <button className="button-secondary" onClick={() => ui.select(current.id)}>Open current call</button>}</div>
     {error && <p role="alert">{error}</p>}{history.isError && <p role="alert">Call history unavailable.</p>}
-    {!!history.data?.length && <details><summary>Call history</summary><ul className="call-history">{history.data.map(call => <li key={call.id}>{call.mode === 'voice' ? 'Voice' : 'Video'} · {call.state.replace('_', ' ')} · {new Date(call.createdAt).toLocaleString()}</li>)}</ul></details>}
+    {!!history.data?.length && <details><summary aria-label="Call history" title="Call history"><Icon name="history" size={21} /><span className="sr-only">Call history</span></summary><ul className="call-history">{history.data.map(call => <li key={call.id}>{call.mode === 'voice' ? 'Voice' : 'Video'} · {call.state.replace('_', ' ')} · {new Date(call.createdAt).toLocaleString()}</li>)}</ul></details>}
   </section>;
 }
 export function CallDock() {
@@ -57,8 +58,8 @@ export function CallDock() {
       return <div className="incoming-call" key={call.id}><strong>{part?.state === 'invited' ? 'Incoming' : 'Ongoing'} {call.mode} call · {call.title}</strong><div className="control-row"><button disabled={busy} onClick={() => ui.select(call.id)}>Open call</button>{part?.state === 'invited' && <><button disabled={busy} onClick={() => { void action(call, 'accept'); }}>Accept call</button><button className="button-secondary" disabled={busy} onClick={() => { void action(call, 'decline'); }}>Decline call</button></>}</div></div>;
     })}
     {ui.id && <section ref={panel} className="call-panel" aria-label="Current call">
-      {detail.isPending && <p role="status">Opening call…</p>}{detail.isError && <p role="alert">Call unavailable. Your media has stopped. Reconnect or check your membership.</p>}
-      {c && !detail.isError && <><div className="section-heading"><h2>{c.title} · {c.mode} call</h2><Link to={`/chat/${c.conversationId}`}>Conversation</Link></div><p role="status">{c.state === 'ringing' ? 'Calling · waiting for an answer' : c.state === 'ending' ? 'Ending call · waiting for the media service' : c.state.replace('_', ' ')}</p>{c.reason && <p className="hint">{c.reason}</p>}
+      {detail.isPending && <p role="status">Opening call…</p>}{detail.isError && <><p role="alert">Call unavailable. Your media has stopped. Reconnect or check your membership.</p><button className="button-secondary" onClick={ui.dismiss}>Close call</button></>}
+      {c && !detail.isError && <><div className="section-heading"><h2>{c.title} · {c.mode} call</h2><Link to={`/chat/${c.conversationId}`}>Conversation</Link>{!open && c.state !== 'ending' && <button className="button-secondary" onClick={ui.dismiss}>Close call</button>}</div><p role="status">{c.state === 'ringing' ? 'Calling · waiting for an answer' : c.state === 'ending' ? 'Ending call · waiting for the media service' : c.state.replace('_', ' ')}</p>{c.reason && <p className="hint">{c.reason}</p>}
         {open && !c.ready && <p role="status">Preparing a secure connection. Reconnects may need a moment.</p>}
         {open && me?.state === 'invited' && <div className="control-row"><button disabled={busy} onClick={() => { void action(c, 'accept'); }}>Accept call</button><button disabled={busy} className="button-secondary" onClick={() => { void action(c, 'decline'); }}>Decline call</button></div>}
         {open && me?.state === 'accepted' && !me.currentDevice && <p className="notice">This call was accepted on another device.</p>}

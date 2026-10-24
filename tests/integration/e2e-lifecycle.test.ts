@@ -6,6 +6,7 @@ import { createMongoClient, AttachmentStorage } from '@chat/domain';
 import { loadConfig } from '@chat/config';
 import { claimFixture, cleanupFixture } from '../e2e/lifecycle.js';
 import FixtureCleanupReporter from '../e2e/cleanup-reporter.js';
+import { browserEndpoints } from '../e2e/endpoints.js';
 
 it('refuses foreign/existing/live browser targets and cleans owned late work after a failed run', async () => {
   const identity = { database: `chat_e2e_auth_${randomUUID().replaceAll('-', '')}`, runId: randomUUID() };
@@ -20,7 +21,7 @@ it('refuses foreign/existing/live browser targets and cleans owned late work aft
     await client.connect(); await claimFixture(identity); owned = true;
     await expect(claimFixture(identity)).rejects.toThrow('already exists');
     await expect(cleanupFixture({ ...identity, runId: randomUUID() })).rejects.toThrow('foreign');
-    await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(3000, '127.0.0.1', resolve); });
+    await new Promise<void>((resolve, reject) => { server.once('error', reject); server.listen(browserEndpoints().api, '127.0.0.1', resolve); });
     await expect(cleanupFixture(identity)).rejects.toThrow('servers must stop');
     expect(await client.db(identity.database).collection('e2eFixtureOwner').countDocuments()).toBe(1);
     // A real late write and private object remain until every writer has stopped.

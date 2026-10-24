@@ -28,10 +28,11 @@ export class AttachmentStorage {
   putApproved(key: string, bytes: Buffer, type: string) { return this.client.send(new PutObjectCommand({ Bucket: this.config.S3_APPROVED_BUCKET, Key: key, Body: bytes, ContentLength: bytes.length, ContentType: type, CacheControl: 'private, no-store', ContentDisposition: 'attachment' })); }
   remove(bucket: string, key: string) { if (!key.startsWith(this.prefix())) throw new Error('Foreign object prefix'); return this.client.send(new DeleteObjectCommand({ Bucket: bucket, Key: key })); }
   list(bucket: string, after?: string) { return this.client.send(new ListObjectsV2Command({ Bucket: bucket, Prefix: this.prefix(), MaxKeys: 50, ...(after ? { ContinuationToken: after } : {}) })); }
-  async download(row: AttachmentRecord) {
+  async download(row: AttachmentRecord, inline = false) {
     if (!row.approvedKey || !row.approvedType) throw new Error('Missing approved object');
     const name = row.name.replace(/[^a-zA-Z0-9._ -]/g, '_'), encoded = encodeURIComponent(row.name).replace(/['()*]/g, char => `%${char.charCodeAt(0).toString(16).toUpperCase()}`);
-    return { url: await getSignedUrl(this.client, new GetObjectCommand({ Bucket: this.config.S3_APPROVED_BUCKET, Key: row.approvedKey, ResponseContentType: row.approvedType, ResponseContentDisposition: `attachment; filename="${name}"; filename*=UTF-8''${encoded}`, ResponseCacheControl: 'private, no-store' }), { expiresIn: this.config.DOWNLOAD_URL_SECONDS }), expiresAt: new Date(Date.now() + this.config.DOWNLOAD_URL_SECONDS * 1000).toISOString() };
+    const disposition = inline && /^(?:image\/(?:jpeg|png|webp|gif)|video\/(?:mp4|webm)|audio\/(?:mpeg|wav|ogg))$/.test(row.approvedType) ? 'inline' : 'attachment';
+    return { url: await getSignedUrl(this.client, new GetObjectCommand({ Bucket: this.config.S3_APPROVED_BUCKET, Key: row.approvedKey, ResponseContentType: row.approvedType, ResponseContentDisposition: `${disposition}; filename="${name}"; filename*=UTF-8''${encoded}`, ResponseCacheControl: 'private, no-store' }), { expiresIn: this.config.DOWNLOAD_URL_SECONDS }), expiresAt: new Date(Date.now() + this.config.DOWNLOAD_URL_SECONDS * 1000).toISOString() };
   }
   async avatarDownload(row: AttachmentRecord) {
     if (!row.approvedKey || row.purpose !== 'avatar' || row.approvedType !== 'image/webp') throw new Error('Missing approved avatar');

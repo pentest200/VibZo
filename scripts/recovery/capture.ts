@@ -17,7 +17,7 @@ export async function captureSnapshot(config: Config, output: string, key: Buffe
     if (!await recoveryReady(db)) throw new RecoveryError('Source restore is incomplete');
     return await quiescent(client, db.databaseName, async () => {
       const markers = await db.collection<{ _id: string; appliedAt: Date }>('schemaMigrations').find().sort({ _id: 1 }).toArray();
-      if (!supportedMarkers(markers)) throw new RecoveryError('Source requires exact schema 001-008 or 001-009');
+      if (!supportedMarkers(markers)) throw new RecoveryError('Source requires exact schema 001-008, 001-009 or 001-010');
       const meta = await catalog(db), attachments = await db.collection<AttachmentRecord>('attachments').find({ state: 'ready' }).limit(129).toArray();
       if (attachments.length > 128) throw new RecoveryError('Approved object budget exceeded');
       const objects: { id: string; entry: string; bytes: number; sha256: string; type: string; key: string }[] = [];
@@ -54,7 +54,7 @@ export async function capturePolicy(config: Config, snapshot: string, output: st
       return createBundle(output, key, base, async add => {
         owned = true; let total = 0;
         for (const name of policyCollections) {
-          const filter = name === 'messages' ? { deletedAt: { $ne: null } } : {};
+          const filter = name === 'messages' ? { $or: [{ deletedAt: { $ne: null } }, { 'hiddenFor.0': { $exists: true } }, { pinned: { $exists: true } }] } : {};
           async function* records() {
             yield Buffer.from('['); let count = 0;
             for await (const row of db.collection(name).find(filter).limit(5001).batchSize(1)) {

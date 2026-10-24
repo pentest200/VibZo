@@ -89,6 +89,16 @@ test('two independent users exchange real generated audio/video, control devices
     await second.page.getByRole('button', { name: 'Accept call', exact: true }).click();
     await remoteVideo(page); await remoteVideo(second.page);
     await realWebhooks();
+    const currentPanel = page.getByRole('dialog', { name: 'Current call', exact: true });
+    expect(await currentPanel.evaluate(node => { const box = node.getBoundingClientRect(); return box.width >= innerWidth - 2 && box.height >= innerHeight - 2; })).toBe(true);
+    const peerCount = await page.evaluate(() => (window as unknown as { __callPeers: RTCPeerConnection[] }).__callPeers.length), beforeMinimize = (await received(page)).frames;
+    await page.getByRole('button', { name: 'Minimize call', exact: true }).click(); await expect(currentPanel).toHaveAttribute('data-expanded', 'false');
+    expect(await currentPanel.evaluate(node => !node.matches(':modal') && node.getBoundingClientRect().top >= 72 && node.getBoundingClientRect().width <= 300)).toBe(true);
+    await page.getByLabel('Message', { exact: true }).fill('Chat while calling'); await page.getByLabel('Message', { exact: true }).press('Enter'); await expect(page.locator('.message-list')).toContainText('Chat while calling');
+    await expect.poll(async () => (await received(page)).frames).toBeGreaterThan(beforeMinimize + 5);
+    await page.screenshot({ path: '.cache/qa/call-minimized.png' });
+    await page.getByRole('button', { name: 'Expand call', exact: true }).click(); await expect(currentPanel).toHaveAttribute('data-expanded', 'true');
+    expect(await page.evaluate(() => (window as unknown as { __callPeers: RTCPeerConnection[] }).__callPeers.length)).toBe(peerCount);
     if (process.env['CALL_TEST_RELAY'] === 'true') { await relayOnly(page); await relayOnly(second.page); }
     await page.getByRole('button', { name: 'Mute microphone', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Enable microphone', exact: true })).toHaveAttribute('aria-pressed', 'false');
@@ -112,9 +122,9 @@ test('two independent users exchange real generated audio/video, control devices
     await page.screenshot({ path: '.cache/qa/calls-mobile.png', fullPage: true });
     await page.getByRole('button', { name: 'End call for everyone', exact: true }).click();
     await expect(second.page.locator('.call-tracks video')).toHaveCount(0, { timeout: 15000 });
-    await expect(page.getByRole('region', { name: 'Current call', exact: true }).getByRole('status').first()).toHaveText('ended', { timeout: 15000 });
-    await page.locator('.call-launcher > details > summary').click(); await expect(page.locator('.call-history')).toContainText('Video · ended', { timeout: 10000 }); await page.locator('.call-launcher > details > summary').click();
+    await expect(page.getByRole('dialog', { name: 'Current call', exact: true }).getByRole('status').first()).toHaveText('ended', { timeout: 15000 });
     await page.getByRole('button', { name: 'Close call', exact: true }).click(); await expect(page.locator('.call-panel')).toHaveCount(0);
+    await page.locator('.call-launcher > details > summary').click(); await expect(page.locator('.call-history')).toContainText('Video · ended', { timeout: 10000 }); await page.locator('.call-launcher > details > summary').click();
   } finally { await second.context.close(); }
 });
 test('three users share a group call and moderator removal forces an authorized room change', async ({ page, browser, request }, info) => {
@@ -126,6 +136,7 @@ test('three users share a group call and moderator removal forces an authorized 
     for (const [user, target] of [[bob, second.page], [carol, third.page]] as const) {
       await search(page, user.username, true); await page.getByRole('button', { name: `Invite with ${user.username}`, exact: true }).click();
       await target.getByRole('button', { name: 'Refresh inbox', exact: true }).click(); await target.getByRole('button', { name: 'Accept Media group', exact: true }).click();
+      await expect(target.locator('.conversation-heading h2')).toHaveText('Media group');
     }
     await page.getByRole('button', { name: 'Video call', exact: true }).click();
     for (const target of [second.page, third.page]) await target.getByRole('button', { name: 'Accept call', exact: true }).click();

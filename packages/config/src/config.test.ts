@@ -4,7 +4,7 @@ describe('server config safety', () => {
   it('loads bounded local-only limits', () => {
     expect(loadConfig({}).MAX_GROUP_MEMBERS).toBe(50);
     expect(loadConfig({}).SCANNER_BYPASS).toBe(false);
-    expect(loadConfig({}).ALLOWED_ATTACHMENT_TYPES).toEqual(['jpeg', 'png', 'webp', 'pdf', 'text']);
+    expect(loadConfig({}).ALLOWED_ATTACHMENT_TYPES).toEqual(['jpeg', 'png', 'webp', 'pdf', 'text', 'gif', 'mp4', 'webm', 'mp3', 'wav', 'ogg']);
   });
   it.each([{ MAX_GROUP_MEMBERS: '500' }, { MAX_SESSIONS: 'NaN' }, { COOKIE_SECURE: 'yes' }, { API_PORT: '0' }, { MAX_ATTACHMENT_BYTES: '-1' }, { ALLOWED_ATTACHMENT_TYPES: 'jpeg,html' }, { ALLOWED_ATTACHMENT_TYPES: '' }])('rejects invalid limits/booleans %j', env => {
     expect(() => loadConfig(env)).toThrow('Invalid configuration');

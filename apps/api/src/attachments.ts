@@ -19,4 +19,5 @@ export class AttachmentController {
   @Post('/:id/retry') @HttpCode(200) retry(@Req() request: FastifyRequest, @Param('id') id: string, @Body() body: unknown) { return this.service.retry(this.token(request), parse(idSchema, id), parse(attachmentActionSchema, body).commandId); }
   @Post('/:id/delete') @HttpCode(200) remove(@Req() request: FastifyRequest, @Param('id') id: string, @Body() body: unknown) { return this.service.removeFile(this.token(request), parse(idSchema, id), parse(attachmentActionSchema, body).commandId); }
   @Post('/:id/download') @HttpCode(200) download(@Req() request: FastifyRequest, @Param('id') id: string, @Body() body: unknown) { parse(z.strictObject({}), body); return this.service.download(this.token(request), parse(idSchema, id)); }
+  @Post('/:id/preview') @HttpCode(200) preview(@Req() request: FastifyRequest, @Param('id') id: string, @Body() body: unknown) { parse(z.strictObject({}), body); return this.service.download(this.token(request), parse(idSchema, id), true); }
 }

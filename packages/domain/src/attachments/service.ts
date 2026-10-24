@@ -11,6 +11,7 @@ import type { MessageRecord, VisibilityRecord } from '../conversations/model.js'
 import type { AttachmentCommand, AttachmentRecord, AttachmentJob, AttachmentQuota } from './model.js';
 import { attachmentView, contentTypes } from './model.js';
 import { attachmentSchemaReady } from './migrations.js';
+import { experienceSchemaReady } from '../conversations/experience-migration.js';
 import { AttachmentStorage } from './storage.js';
 import { quota, scheduleScan } from './store.js';
 export class AttachmentService extends ConversationService {
@@ -26,6 +27,7 @@ export class AttachmentService extends ConversationService {
   async reserve(token: string | undefined, raw: unknown) {
     await this.ready(); const parsed = reserveAttachmentSchema.safeParse(raw); if (!parsed.success) throw new DomainError('INVALID_INPUT', 'Check file name, size, type and checksum.', 400);
     const input = parsed.data, config = this.auth.config, id = randomUUID();
+    if (!['jpeg', 'png', 'webp', 'pdf', 'text'].includes(input.kind) && !await experienceSchemaReady(this.db)) throw unavailable();
     if (input.size > config.MAX_ATTACHMENT_BYTES || !config.ALLOWED_ATTACHMENT_TYPES.includes(input.kind)) throw new DomainError('INVALID_INPUT', 'This file size or type is not allowed.', 400);
     const row = await this.authorizedOperation(token, input.conversationId, async ({ principal, session }) => {
       const userId = principal.user._id, check = await this.command(userId, input.commandId, { action: 'reserve', ...input }, session);
@@ -97,19 +99,19 @@ export class AttachmentService extends ConversationService {
       } return { attachmentId: id, status: 'accepted' as const };
     });
   }
-  async download(token: string | undefined, id: string) {
+  async download(token: string | undefined, id: string, inline = false) {
     await this.ready(); const row = await this.run(async session => {
       const row = await this.files().findOne({ _id: id, state: 'ready', purpose: { $ne: 'avatar' } }, { session }); if (!row || !row.conversationId) throw denied();
       const ctx = await this.authorize(token, row.conversationId, session, 'write');
       if (!await this.db.collection<UserRecord>('users').findOneAndUpdate({ _id: row.ownerId, deletionState: 'active' }, { $inc: { guardVersion: 1 } }, { session })) throw denied();
       if (!row.messageId) { if (ctx.principal.user._id !== row.ownerId || row.expiresAt <= new Date()) throw denied(); }
       else {
-        const message = await this.db.collection<MessageRecord>('messages').findOne({ _id: row.messageId, conversationId: row.conversationId, deletedAt: null, attachmentIds: id }, { session });
+        const message = await this.db.collection<MessageRecord>('messages').findOne({ _id: row.messageId, conversationId: row.conversationId, deletedAt: null, attachmentIds: id, hiddenFor: { $ne: ctx.principal.user._id } }, { session });
         if (!message || !await this.db.collection<VisibilityRecord>('visibilityIntervals').findOne({ conversationId: row.conversationId, userId: ctx.principal.user._id, startSeq: { $lte: message.creationSeq }, $or: [{ endSeq: null }, { endSeq: { $gt: message.creationSeq } }] }, { session })) throw denied();
       } return row;
     });
     try { const head = await this.storage.headApproved(row.approvedKey!); if (head.ContentLength !== row.approvedSize || head.ContentType !== row.approvedType) throw new Error('Approved object missing or changed'); } catch { throw unavailable(); }
-    return this.storage.download(row);
+    return this.storage.download(row, inline);
   }
   close() { this.storage.close(); }
 }

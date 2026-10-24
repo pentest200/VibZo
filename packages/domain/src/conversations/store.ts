@@ -81,6 +81,7 @@ export class ConversationStore {
     const conversation=await this.conversations().findOneAndUpdate({_id:conversationId,nextEventSeq:{$lt:maxLong}},{$inc:{nextEventSeq:Long.ONE},$set:{updatedAt:new Date()}},{session,returnDocument:'after'});
     if(!conversation)throw conflict('Conversation sequence is exhausted.');
     const now=new Date();
+    if (kind === 'message.created') await this.members().updateMany({ conversationId, hidden: true, state: 'active' }, { $set: { hidden: false } }, { session });
     await this.db.collection<ControlEvent>('conversationEvents').insertOne({_id:eventId,schemaVersion:1,conversationId,sequence:conversation.nextEventSeq,actorId,kind,payload,createdAt:now},{session});
     const carrier=traceCarrier();
     // New code can precede DDL during an overlap: omit optional fields until 008.

@@ -30,7 +30,7 @@ export class MessageService extends ConversationService {
       const commands = this.db.collection<MessageCommand>('messageCommands'), previous = await commands.findOne(key, { session });
       if (previous) { if (previous.digest !== digest) throw new MessageIdConflict(); return { response: accepted(previous), duplicate: true }; }
       if (input.replyToId) {
-        const reply = await this.db.collection<MessageRecord>('messages').findOne({ _id: input.replyToId, conversationId: input.conversationId, deletedAt: null }, { session });
+        const reply = await this.db.collection<MessageRecord>('messages').findOne({ _id: input.replyToId, conversationId: input.conversationId, deletedAt: null, hiddenFor: { $ne: senderId } }, { session });
         if (!reply) throw denied();
         const visible = await this.db.collection<VisibilityRecord>('visibilityIntervals').findOne({ conversationId: input.conversationId, userId: senderId, startSeq: { $lte: reply.creationSeq }, $or: [{ endSeq: null }, { endSeq: { $gt: reply.creationSeq } }] }, { session });
         if (!visible) throw denied();

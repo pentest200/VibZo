@@ -18,7 +18,7 @@ async function pending(page: Page) {
     finally { db.close(); }
   });
 }
-test('live inbox discovery, edits, offline reaction repair, explicit reads and deletion converge between users', async ({ page, browser, request }) => {
+test('live inbox discovery, edits, offline reaction repair, automatic reads and deletion converge between users', async ({ page, browser, request }) => {
   const alice = await register(request, 'livealice'), bob = await register(request, 'livebob'), context = await browser.newContext(), other = await context.newPage();
   try {
     await login(page, alice.email); await login(other, bob.email);
@@ -29,17 +29,17 @@ test('live inbox discovery, edits, offline reaction repair, explicit reads and d
     await send(page, 'Live original'); await expect(other.locator('.message-list')).toContainText('Live original', { timeout: 8000 });
     await context.setOffline(true);
     await messageActions(other, 'Live original'); await other.getByRole('button', { name: 'Like 0', exact: true }).click();
-    await other.getByRole('button', { name: 'Mark messages read', exact: true }).click();
+    await other.bringToFront(); await expect(other.getByRole('button', { name: 'Mark messages read', exact: true })).toHaveCount(0);
     await expect.poll(async () => (await pending(other)).some(row => row.command.type === 'mutation')).toBe(true);
-    page.once('dialog', dialog => { void dialog.accept('Edited while the other device was offline'); });
     await messageActions(page); await page.getByRole('button', { name: 'Edit message', exact: true }).click();
+    await page.getByLabel('Message', { exact: true }).fill('Edited while the other device was offline'); await page.getByRole('button', { name: 'Save changes', exact: true }).click();
     await expect(page.locator('.message-list')).toContainText('Edited while the other device was offline');
     await context.setOffline(false);
     await expect(other.locator('.message-list')).toContainText('Edited while the other device was offline', { timeout: 25000 });
     await expect(page.getByRole('button', { name: 'Like 1', exact: true })).toBeVisible({ timeout: 25000 });
-    await expect(page.locator('.message-list small').getByText('Read', { exact: true })).toBeVisible({ timeout: 25000 });
+    await expect(page.getByRole('img', { name: 'Read', exact: true })).toBeVisible({ timeout: 25000 });
     await context.setOffline(true);
-    page.once('dialog', dialog => { void dialog.accept(); }); await messageActions(page); await page.getByRole('button', { name: 'Delete message', exact: true }).click();
+    await messageActions(page); await page.getByRole('button', { name: 'Delete message', exact: true }).click(); await page.getByRole('dialog', { name: 'Delete message', exact: true }).getByRole('button', { name: 'Delete for everyone', exact: true }).click();
     await expect(page.locator('.message-list')).toContainText('Message deleted'); await context.setOffline(false);
     await expect(other.locator('.message-list')).toContainText('Message deleted', { timeout: 25000 });
     await page.screenshot({ path: '.cache/qa/sync-desktop.png', fullPage: true });

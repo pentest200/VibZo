@@ -8,11 +8,29 @@ import { tokenHash } from '../auth/crypto.js';
 import type { UserRecord } from '../auth/model.js';
 import { DomainError } from '../auth/errors.js';
 import { ConversationStore, denied, conflict } from './store.js';
+import { experienceSchemaReady } from './experience-migration.js';
+import { interactionsSchemaReady } from './interactions-migration.js';
+import { unavailable } from '../auth/errors.js';
 import type { ConversationContext } from './store.js';
 import { membershipId, pairId, publicUser } from './model.js';
 import type { MembershipRecord, VisibilityRecord, CreateCommand, BlockRecord, PairRecord, InboxEvent, MessageRecord } from './model.js';
 
 export class ConversationService extends ConversationStore {
+  async preference(token: string | undefined, id: string, commandId: string, kind: 'pin-chat' | 'archive-chat', active: boolean) {
+    if (!await interactionsSchemaReady(this.db)) throw unavailable();
+    return this.run(async session => {
+      const ctx = await this.authorize(token, id, session), userId = ctx.principal.user._id;
+      const commands = this.db.collection<CreateCommand>('conversationCommands'), digest = tokenHash(JSON.stringify({ id, kind, active }));
+      const old = await commands.findOne({ userId, clientCommandId: commandId }, { session });
+      if (old) { if (old.digest !== digest) throw conflict('This action ID was used with different content.'); return; }
+      await this.inboxCounter(userId, session);
+      if (kind === 'pin-chat' && active && !ctx.membership.pinned && await this.members().countDocuments({ userId, state: 'active', pinned: true }, { session, limit: 10 }) >= 10) throw conflict('Unpin a chat before pinning another. You can pin up to 10 chats.');
+      await this.members().updateOne({ _id: ctx.membership._id }, { $set: { [kind === 'pin-chat' ? 'pinned' : 'archived']: active } }, { session });
+      await this.db.collection('syncSnapshots').deleteMany({ userId, kind: 'inbox' }, { session });
+      await this.notify([userId], id, session);
+      await commands.insertOne({ _id: randomUUID(), schemaVersion: 1, userId, clientCommandId: commandId, digest, conversationId: id, createdAt: new Date() }, { session });
+    });
+  }
   async authorizedOperation<T>(token:string|undefined,id:string,operation:(context:ConversationContext)=>Promise<T>):Promise<T>{
     return this.run(async session=>operation(await this.authorize(token,id,session,'write')));
   }
@@ -46,7 +64,7 @@ export class ConversationService extends ConversationStore {
       const principal=await this.actor(token,session),actorId=principal.user._id;if(actorId===targetId)throw denied();
       await this.guardPair(actorId,targetId,session);
       const existing=await this.conversations().findOne({kind:'direct',directPair:pairId(actorId,targetId)},{session});
-      if(existing){await this.authorize(token,existing._id,session,'write');return {conversationId:existing._id};}
+      if(existing){await this.authorize(token,existing._id,session,'write');const restored=await this.members().updateOne({_id:membershipId(existing._id,actorId),hidden:true},{$set:{hidden:false}},{session});if(restored.modifiedCount)await this.notify([actorId],existing._id,session);return {conversationId:existing._id};}
       await this.target(targetId,session);
       for(const userId of [actorId,targetId].sort())await this.accountCapacity(userId,session);
       const now=new Date();
@@ -172,7 +190,39 @@ export class ConversationService extends ConversationStore {
       return {users:page.flatMap(row=>{const user=byId.get(row.blockedId);return user?[publicUser(user)]:[];}),nextCursor:records.length>limit?page.at(-1)!.blockedId:null};
     });
   }
-  private visibleMemberships(userId:string):Filter<MembershipRecord>{return {userId,$or:[{state:'active'},{state:'invited',invitationExpiresAt:{$gt:new Date()}}]};}
+  private visibleMemberships(userId:string):Filter<MembershipRecord>{return {userId,hidden:{$ne:true},$or:[{state:'active'},{state:'invited',invitationExpiresAt:{$gt:new Date()}}]};}
+  async manage(token: string | undefined, id: string, commandId: string, action: 'clear' | 'delete' | 'delete-group') {
+    if (!await experienceSchemaReady(this.db)) throw unavailable();
+    return this.run(async session => {
+      const principal = await this.actor(token, session), userId = principal.user._id;
+      const digest = tokenHash(JSON.stringify({ id, action })), commands = this.db.collection<CreateCommand>('conversationCommands');
+      const previous = await commands.findOne({ userId, clientCommandId: commandId }, { session });
+      if (previous) { if (previous.digest !== digest) throw conflict('This action ID was already used with different content.'); return; }
+      const ctx = await this.authorize(token, id, session);
+      if (action === 'delete' && ctx.conversation.kind !== 'direct') throw denied();
+      if (action === 'delete-group' && (ctx.conversation.kind !== 'group' || ctx.membership.role !== 'owner')) throw denied();
+      if (action !== 'delete-group') {
+        const call = await this.db.collection('calls').findOne({ conversationId: id, open: true }, { session });
+        if (call && await this.db.collection('callParticipants').findOne({ callId: call._id, userId, state: 'accepted' }, { session })) throw conflict('Leave or end the current call before clearing or deleting this chat.');
+      }
+      const now = new Date(), sequence = await this.event(id, userId, action === 'clear' ? 'conversation.history_cleared' : action === 'delete' ? 'conversation.hidden' : 'conversation.deleted', { targetUserId: userId }, session);
+      if (action === 'delete-group') {
+        await this.conversations().updateOne({ _id: id }, { $set: { state: 'archived', deletionRequestedAt: now } }, { session });
+        await this.members().updateMany({ conversationId: id, state: { $in: ['active', 'invited'] } }, { $set: { state: 'removed', invitationExpiresAt: null, updatedAt: now } }, { session });
+        await this.db.collection<VisibilityRecord>('visibilityIntervals').updateMany({ conversationId: id, endSeq: null }, { $set: { endSeq: sequence } }, { session });
+        // Existing leased file/call workers retain their fenced cleanup paths. New grants are denied immediately.
+        await this.db.collection('calls').updateMany({ conversationId: id, open: true }, { $set: { availableAt: now }, $inc: { guardVersion: 1 } }, { session });
+        await this.db.collection('syncSnapshots').deleteMany({ $or: [{ conversationId: id }, { kind: 'inbox', 'payload.id': id }] }, { session });
+      } else {
+        // Erase every older visibility interval so pagination, replies, mutations and file grants agree.
+        await this.db.collection<VisibilityRecord>('visibilityIntervals').deleteMany({ conversationId: id, userId }, { session });
+        await this.openWindow(id, userId, sequence, session);
+        if (action === 'delete') await this.members().updateOne({ _id: ctx.membership._id }, { $set: { hidden: true }, $unset: { pinned: '', archived: '' } }, { session });
+        await this.db.collection('syncSnapshots').deleteMany({ userId, $or: [{ conversationId: id }, { kind: 'inbox' }] }, { session });
+      }
+      await commands.insertOne({ _id: randomUUID(), schemaVersion: 1, userId, clientCommandId: commandId, digest, conversationId: id, createdAt: now }, { session });
+    });
+  }
   async inbox(token:string|undefined,after:string|undefined,limit:number){
     return this.run(async session=>{
       const principal=await this.actor(token,session),userId=principal.user._id;
@@ -185,7 +235,7 @@ export class ConversationService extends ConversationStore {
         const conversation=map.get(member.conversationId);if(!conversation)continue;
         const otherId=conversation.directPair?.split(':').find(id=>id!==userId)??null;
         const other=otherId?await this.target(otherId,session,false):null;
-        items.push({id:conversation._id,kind:conversation.kind,title:other?.displayName??conversation.title,state:member.state as 'active'|'invited',role:member.role,otherUserId:otherId,updatedAt:conversation.updatedAt.toISOString()});
+        items.push({id:conversation._id,kind:conversation.kind,title:other?.displayName??conversation.title,state:member.state as 'active'|'invited',role:member.role,otherUserId:otherId,pinned:!!member.pinned,archived:!!member.archived,updatedAt:conversation.updatedAt.toISOString()});
       }
       return {items,nextCursor:members.length>limit?page.at(-1)!.conversationId:null,watermark:longToSequence(counter.sequence)};
     });
@@ -210,7 +260,7 @@ export class ConversationService extends ConversationStore {
       const otherId=ctx.conversation.directPair?.split(':').find(userId=>userId!==ctx.principal.user._id)??null;
       const pair=otherId?await this.guardPair(ctx.principal.user._id,otherId,session,true):null;
       return {id,kind:ctx.conversation.kind,title:otherId?byId.get(otherId)?.displayName??'Unavailable account':ctx.conversation.title,role:ctx.membership.role,otherUserId:otherId,
-        blocked:!!pair?.blockedBy.length,watermark:longToSequence(ctx.conversation.nextEventSeq),members:rows.flatMap(row=>{const user=byId.get(row.userId);return user?[{user:publicUser(user),role:row.role,state:row.state as 'active'|'invited',invitationExpiresAt:row.invitationExpiresAt?.toISOString()??null}]:[];})};
+        blocked:!!pair?.blockedBy.length,pinned:!!ctx.membership.pinned,archived:!!ctx.membership.archived,watermark:longToSequence(ctx.conversation.nextEventSeq),members:rows.flatMap(row=>{const user=byId.get(row.userId);return user?[{user:publicUser(user),role:row.role,state:row.state as 'active'|'invited',invitationExpiresAt:row.invitationExpiresAt?.toISOString()??null}]:[];})};
     });
   }
   async history(token:string|undefined,id:string,before:string|undefined,through:string|undefined,limit:number){
@@ -218,7 +268,7 @@ export class ConversationService extends ConversationStore {
     return this.run(async session=>{
       const ctx=await this.authorize(token,id,session),watermark=through?sequenceToLong(through):ctx.conversation.nextEventSeq;
       if(watermark.greaterThan(ctx.conversation.nextEventSeq))throw new DomainError('INVALID_INPUT','Invalid history watermark.',400);
-      const match={conversationId:id,creationSeq:{$lte:watermark,...(before?{$lt:sequenceToLong(before)}:{})}};
+      const match={conversationId:id,hiddenFor:{$ne:ctx.principal.user._id},creationSeq:{$lte:watermark,...(before?{$lt:sequenceToLong(before)}:{})}};
       const rows=await this.db.collection<MessageRecord>('messages').aggregate<MessageRecord>([
         {$match:match},{$sort:{creationSeq:-1}},
         {$lookup:{from:'visibilityIntervals',let:{seq:'$creationSeq'},pipeline:[{$match:{conversationId:id,userId:ctx.principal.user._id,$expr:{$and:[{$lte:['$startSeq','$$seq']},{$or:[{$eq:['$endSeq',null]},{$gt:['$endSeq','$$seq']}]}]}}},{$limit:1}],as:'_visible'}},

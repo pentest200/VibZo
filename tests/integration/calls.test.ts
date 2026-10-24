@@ -46,9 +46,27 @@ async function signalingAccepted(token: string) {
 }
 it('applies additive 007 idempotently and rejects malformed records', async () => {
   const a = await f.user('migration'); await runMigrations(f.db);
-  expect(await f.db.collection('schemaMigrations').countDocuments()).toBe(9);
+  expect(await f.db.collection('schemaMigrations').countDocuments()).toBe(11);
   expect((await f.auth.current(a.token)).user.id).toBe(a.id);
   await expect(f.db.collection('calls').insertOne({ state: 'active' })).rejects.toMatchObject({ code: 121 });
+});
+it('revokes a deleted group immediately and reconciles its actual SFU room without an orphan', async () => {
+  const { a, b, id } = await group('deletegroup'), callId = await start(a, id); await step();
+  const before = await calls.calls().findOne({ _id: callId }), provider = calls.provider as LiveKitProvider; expect(before?.roomName).toBeTruthy();
+  expect((await provider.client.listRooms([before!.roomName])).length).toBe(1);
+  await sync.manage(a.token, id, randomUUID(), 'delete-group');
+  for (const user of [a, b]) await expect(calls.get(user.token, callId)).rejects.toMatchObject({ status: 403 });
+  await expect(calls.join(a.token, callId)).rejects.toMatchObject({ status: 403 });
+  for (let n = 0; n < 3 && await calls.calls().countDocuments({ _id: callId, open: true }); n++) await step();
+  expect(await calls.calls().findOne({ _id: callId })).toMatchObject({ open: false, state: 'ended' });
+  expect(await calls.rooms().countDocuments({ callId, state: { $ne: 'deleted' } })).toBe(0); expect(await provider.client.listRooms([before!.roomName])).toEqual([]);
+});
+it('keeps personal clear/delete from stranding an accepted call and allows clearing after leaving', async () => {
+  const { a, id } = await pair('clearcall'), callId = await start(a, id);
+  await sync.send(a.token, { v: 1, conversationId: id, clientMessageId: randomUUID(), text: 'Keep until call ends', attachmentIds: [] });
+  for (const kind of ['clear', 'delete'] as const) await expect(sync.manage(a.token, id, randomUUID(), kind)).rejects.toMatchObject({ status: 409 });
+  expect((await sync.snapshot(a.token, id)).messages).toHaveLength(1); expect((await calls.get(a.token, callId)).state).toBe('ringing');
+  await calls.action(a.token, callId, action('leave')); await sync.manage(a.token, id, randomUUID(), 'clear'); expect((await sync.snapshot(a.token, id)).messages).toEqual([]);
 });
 it('serializes duplicate starts, input digests, one open call and visibility boundaries', async () => {
   const { a, b, id } = await pair('dedup'), input = { commandId: randomUUID(), conversationId: id, mode: 'voice' };

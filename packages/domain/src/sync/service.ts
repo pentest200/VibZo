@@ -16,6 +16,7 @@ import { longToSequence, sequenceToLong } from '../sequence.js';
 import { eventReference } from '../messaging/delivery.js';
 import type { MutationCommand, Reaction, Receipt, ReplayFloor, SnapshotRecord } from './model.js';
 import { syncSchemaReady } from './migrations.js';
+import { interactionsSchemaReady } from '../conversations/interactions-migration.js';
 export class SyncService extends MessageService {
   private async ready() { if (!await syncSchemaReady(this.db)) throw unavailable(); }
   private async visible(id: string, userId: string, sequence: Long, session: ClientSession) {
@@ -38,9 +39,14 @@ export class SyncService extends MessageService {
   private async window(ctx: ConversationContext, before?: string): Promise<ConversationSnapshot> {
     const { session, conversation: c, principal } = ctx;
     const rows = await this.db.collection<MessageRecord>('messages').aggregate<MessageRecord>([
-      { $match: { conversationId: c._id, ...(before ? { creationSeq: { $lt: sequenceToLong(before) } } : {}) } }, { $sort: { creationSeq: -1 } },
+      { $match: { conversationId: c._id, hiddenFor: { $ne: principal.user._id }, ...(before ? { creationSeq: { $lt: sequenceToLong(before) } } : {}) } }, { $sort: { creationSeq: -1 } },
       { $lookup: { from: 'visibilityIntervals', let: { seq: '$creationSeq' }, pipeline: [{ $match: { conversationId: c._id, userId: principal.user._id, $expr: { $and: [{ $lte: ['$startSeq', '$$seq'] }, { $or: [{ $eq: ['$endSeq', null] }, { $gt: ['$endSeq', '$$seq'] }] }] } } }, { $limit: 1 }], as: '_visible' } },
       { $match: { '_visible.0': { $exists: true } } }, { $limit: 101 }, { $project: { _visible: 0 } }
+    ], { session, maxTimeMS: 3000 }).toArray();
+    const pinned = await this.db.collection<MessageRecord>('messages').aggregate<MessageRecord>([
+      { $match: { conversationId: c._id, pinned: true, deletedAt: null, hiddenFor: { $ne: principal.user._id } } }, { $sort: { creationSeq: -1 } },
+      { $lookup: { from: 'visibilityIntervals', let: { seq: '$creationSeq' }, pipeline: [{ $match: { conversationId: c._id, userId: principal.user._id, $expr: { $and: [{ $lte: ['$startSeq', '$$seq'] }, { $or: [{ $eq: ['$endSeq', null] }, { $gt: ['$endSeq', '$$seq'] }] }] } } }, { $limit: 1 }], as: '_visible' } },
+      { $match: { '_visible.0': { $exists: true } } }, { $limit: 50 }, { $project: { _visible: 0 } }
     ], { session, maxTimeMS: 3000 }).toArray();
     const page = rows.slice(0, 100), active = await this.members().find({ conversationId: c._id, state: 'active' }, { session }).limit(50).toArray(), activeIds = active.map(member => member.userId);
     const reactions = await this.db.collection<Reaction>('messageReactions').aggregate<{ _id: { messageId: string; reaction: string }; count: number; mine: number }>([
@@ -49,10 +55,11 @@ export class SyncService extends MessageService {
     ], { session, maxTimeMS: 3000 }).toArray();
     const receipts = await this.db.collection<Receipt>('conversationReceipts').find({ conversationId: c._id, userId: { $in: activeIds } }, { session }).limit(50).toArray();
     const windows = await this.db.collection<VisibilityRecord>('visibilityIntervals').find({ conversationId: c._id, userId: { $in: activeIds }, endSeq: null }, { session }).limit(50).toArray();
-    const attachments = await messageAttachments(this.db, page, session);
+    const attachments = await messageAttachments(this.db, [...page, ...pinned], session);
+    const view = (row: MessageRecord) => ({ id: row._id, senderId: row.senderId, clientMessageId: row.clientMessageId, creationSequence: longToSequence(row.creationSeq), version: longToSequence(row.version ?? Long.ZERO), pinned: !!row.pinned && !row.deletedAt,
+      attachments: attachments.get(row._id) ?? [], text: row.deletedAt ? '' : row.text, replyToId: row.replyToId ?? null, deleted: !!row.deletedAt, createdAt: row.createdAt.toISOString(), reactions: row.deletedAt ? [] : reactions.filter(item => item._id.messageId === row._id).map(item => ({ reaction: item._id.reaction, count: item.count, mine: !!item.mine })) });
     return conversationSnapshotSchema.parse({ conversationId: c._id, watermark: longToSequence(c.nextEventSeq), capturedAt: new Date().toISOString(), olderBefore: rows.length > 100 ? longToSequence(page.at(-1)!.creationSeq) : null,
-      messages: page.map(row => ({ id: row._id, senderId: row.senderId, clientMessageId: row.clientMessageId, creationSequence: longToSequence(row.creationSeq), version: longToSequence(row.version ?? Long.ZERO),
-        attachments: attachments.get(row._id) ?? [], text: row.deletedAt ? '' : row.text, replyToId: row.replyToId ?? null, deleted: !!row.deletedAt, createdAt: row.createdAt.toISOString(), reactions: row.deletedAt ? [] : reactions.filter(item => item._id.messageId === row._id).map(item => ({ reaction: item._id.reaction, count: item.count, mine: !!item.mine })) })),
+      messages: page.map(view), pinnedMessages: pinned.map(view),
       receipts: receipts.flatMap(row => { const window = windows.find(window => window.userId === row.userId); return window ? [{ userId: row.userId, delivered: longToSequence(row.delivered), deliveredFrom: longToSequence(row.deliveredFrom), read: longToSequence(row.read), visibleFrom: longToSequence(window.startSeq) }] : []; }) });
   }
   async snapshot(token: string | undefined, id: string, before?: string) { await this.ready(); return this.run(async session => this.window(await this.authorize(token, id, session), before)); }
@@ -67,20 +74,20 @@ export class SyncService extends MessageService {
       if (kind === 'conversation') {
         if (!conversationId) throw denied(); payload = await this.window(await this.authorize(token, conversationId, session)); watermark = payload.watermark;
       } else {
-        const members = await this.members().find({ userId: principal.user._id, $or: [{ state: 'active' }, { state: 'invited', invitationExpiresAt: { $gt: now } }] }, { session }).sort({ conversationId: 1 }).limit(this.auth.config.MAX_CONVERSATIONS_PER_USER + 1).toArray();
+        const members = await this.members().find({ userId: principal.user._id, hidden: { $ne: true }, $or: [{ state: 'active' }, { state: 'invited', invitationExpiresAt: { $gt: now } }] }, { session }).sort({ conversationId: 1 }).limit(this.auth.config.MAX_CONVERSATIONS_PER_USER + 1).toArray();
         if (members.length > this.auth.config.MAX_CONVERSATIONS_PER_USER) throw unavailable();
         const conversations = await this.conversations().find({ _id: { $in: members.map(row => row.conversationId) }, state: 'active' }, { session }).toArray(), byId = new Map(conversations.map(c => [c._id, c]));
         const peers = conversations.flatMap(c => c.directPair?.split(':').filter(userId => userId !== principal.user._id) ?? []);
         const users = await this.db.collection<UserRecord>('users').find({ _id: { $in: peers } }, { session }).toArray(), names = new Map(users.map(user => [user._id, user.displayName]));
         const counts = await this.db.collection<MessageRecord>('messages').aggregate<{ _id: string; count: number }>([
-          { $match: { conversationId: { $in: conversations.map(c => c._id) }, senderId: { $ne: principal.user._id }, deletedAt: null } },
+          { $match: { conversationId: { $in: conversations.map(c => c._id) }, senderId: { $ne: principal.user._id }, hiddenFor: { $ne: principal.user._id }, deletedAt: null } },
           { $lookup: { from: 'conversationReceipts', let: { conv: '$conversationId' }, pipeline: [{ $match: { userId: principal.user._id, $expr: { $eq: ['$conversationId', '$$conv'] } } }, { $limit: 1 }], as: '_receipt' } },
           { $match: { $expr: { $gt: ['$creationSeq', { $ifNull: [{ $arrayElemAt: ['$_receipt.read', 0] }, Long.ZERO] }] } } },
           { $lookup: { from: 'visibilityIntervals', let: { conv: '$conversationId', seq: '$creationSeq' }, pipeline: [{ $match: { userId: principal.user._id, $expr: { $and: [{ $eq: ['$conversationId', '$$conv'] }, { $lte: ['$startSeq', '$$seq'] }, { $or: [{ $eq: ['$endSeq', null] }, { $gt: ['$endSeq', '$$seq'] }] }] } } }, { $limit: 1 }], as: '_visible' } },
           { $match: { '_visible.0': { $exists: true } } }, { $group: { _id: '$conversationId', count: { $sum: 1 } } }
         ], { session, maxTimeMS: 3000 }).toArray(); const unread = new Map(counts.map(row => [row._id, Math.min(1000, row.count)]));
         payload = members.flatMap(member => { const c = byId.get(member.conversationId); if (!c) return []; const otherUserId = c.directPair?.split(':').find(userId => userId !== principal.user._id) ?? null;
-          return [{ id: c._id, kind: c.kind, title: otherUserId ? names.get(otherUserId) ?? 'Unavailable account' : c.title, role: member.role, state: member.state, otherUserId, unread: unread.get(c._id) ?? 0, updatedAt: c.updatedAt.toISOString() }]; });
+          return [{ id: c._id, kind: c.kind, title: otherUserId ? names.get(otherUserId) ?? 'Unavailable account' : c.title, role: member.role, state: member.state, otherUserId, pinned: !!member.pinned, archived: !!member.archived, unread: unread.get(c._id) ?? 0, updatedAt: c.updatedAt.toISOString() }]; });
         watermark = longToSequence((await this.inboxCounter(principal.user._id, session)).sequence);
       }
       await this.db.collection<SnapshotRecord>('syncSnapshots').insertOne({ _id: snapshotId, schemaVersion: 1, userId: principal.user._id, kind, conversationId: conversationId ?? null, watermark, payload, expiresAt, createdAt: now }, { session });
@@ -100,6 +107,7 @@ export class SyncService extends MessageService {
   async mutate(token: string | undefined, raw: unknown) {
     await this.ready(); const result = mutationSchema.safeParse(raw); if (!result.success) throw new DomainError('INVALID_INPUT', 'Check the message action fields.', 400);
     const input = result.data, digest = tokenHash(JSON.stringify(input)), eventId = randomUUID();
+    if ((input.kind === 'hide' || input.kind === 'pin') && !await interactionsSchemaReady(this.db)) throw unavailable();
     return this.authorizedOperation(token, input.conversationId, async ctx => {
       const { session, principal, conversation } = ctx, userId = principal.user._id, commands = this.db.collection<MutationCommand>('mutationCommands');
       const key = `${userId}:${input.commandId}`, previous = await commands.findOne({ _id: key }, { session });
@@ -121,8 +129,20 @@ export class SyncService extends MessageService {
         }
       } else {
         const messages = this.db.collection<MessageRecord>('messages'), message = await messages.findOne({ _id: input.messageId, conversationId: conversation._id }, { session });
-        if (!message || !await this.visible(conversation._id, userId, message.creationSeq, session)) throw denied();
-        if (input.kind === 'reaction') {
+        if (!message || message.hiddenFor?.includes(userId) || !await this.visible(conversation._id, userId, message.creationSeq, session)) throw denied();
+        if (input.kind === 'hide') {
+          if ((message.hiddenFor?.length ?? 0) >= 50) throw conflict('Use clear history to remove this message from your view.');
+          await messages.updateOne({ _id: message._id }, { $addToSet: { hiddenFor: userId } }, { session });
+          await this.db.collection('syncSnapshots').deleteMany({ userId, $or: [{ conversationId: conversation._id }, { kind: 'inbox' }] }, { session });
+          await this.notify([userId], conversation._id, session);
+        } else if (input.kind === 'pin') {
+          if (message.deletedAt || conversation.kind === 'group' && ctx.membership.role === 'member') throw denied();
+          if (!!message.pinned !== input.active) {
+            if (input.active && await messages.countDocuments({ conversationId: conversation._id, pinned: true, deletedAt: null }, { session, limit: 50 }) >= 50) throw conflict('Unpin a message first. This chat can have up to 50 pinned messages.');
+            await messages.updateOne({ _id: message._id }, { $set: { pinned: input.active } }, { session });
+            sequence = await this.event(conversation._id, userId, 'message.pinned', { messageId: message._id }, session, [], eventId);
+          }
+        } else if (input.kind === 'reaction') {
           if (message.deletedAt) throw denied();
           const reactions = this.db.collection<Reaction>('messageReactions'), id = `${message._id}:${userId}:${input.reaction}`, old = await reactions.findOne({ _id: id }, { session });
           if (!!old !== input.active) {

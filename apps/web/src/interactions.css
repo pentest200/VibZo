@@ -1,0 +1,72 @@
+/* Desktop layout preference; mobile remains one pane. */
+.chat-grid { grid-template-columns:var(--sidebar-width,360px) 6px minmax(0,1fr); }
+.sidebar-splitter { cursor:col-resize; touch-action:none; background:var(--surface); position:relative; z-index:6; outline-offset:-2px; }
+.sidebar-splitter::after { content:''; position:absolute; top:0; bottom:0; left:2px; width:2px; background:var(--border); }
+.sidebar-splitter:hover::after,.sidebar-splitter:focus-visible::after,.chat-grid[data-resizing=true] .sidebar-splitter::after { background:var(--accent); }
+.chat-grid[data-resizing=true] { user-select:none; cursor:col-resize; }
+.inbox-row { position:relative; min-width:0; }
+.inbox-row .inbox-link { padding-right:40px; }
+.inbox-options>summary { display:grid; place-items:center; position:absolute; top:12px; right:3px; width:30px; height:36px; border-radius:9px; cursor:pointer; list-style:none; color:var(--muted); }
+.inbox-options>summary::-webkit-details-marker { display:none; }
+.inbox-row:has(.selected) .inbox-options>summary { color:inherit; }
+.inbox-options[open]>summary,.inbox-options>summary:hover { background:var(--hover); }
+.chat-preferences { display:flex; flex-wrap:wrap; gap:6px; padding:6px 8px; }
+.chat-preferences>button { justify-content:flex-start; font-size:12px; padding:9px; min-height:38px; }
+.chat-preferences .notice { width:100%; font-size:12px; overflow-wrap:anywhere; }
+.inbox-pin { display:flex; color:var(--muted); flex-shrink:0; }
+.inbox-link.selected .inbox-pin { color:inherit; }
+.archive-folder { display:flex; justify-content:flex-start; width:100%; gap:14px; border-radius:12px; padding:15px; background:var(--hover); color:var(--text); margin-bottom:8px; }
+.archive-folder>span { flex:1; text-align:left; }
+.delete-message-choices { display:flex; flex-direction:column; gap:10px; margin-top:22px; }
+.delete-message-choices>button { min-height:44px; }
+.message-meta .message-receipt { display:inline-flex; align-items:center; color:var(--muted); }
+.message-meta .message-receipt.is-read { color:#0874b5; }
+:root[data-theme=dark] .message-meta .message-receipt.is-read { color:#73d5ff; }
+.message-pin { display:inline-flex; margin-left:6px; vertical-align:middle; }
+.pinned-message-bar { position:sticky; top:-20px; z-index:2; flex-shrink:0; display:flex; gap:12px; align-items:center; width:100%; min-width:0; padding:12px 16px; background:var(--surface); color:var(--accent); border-radius:10px; border-left:3px solid var(--accent); text-align:left; box-shadow:0 2px 8px #0001; }
+.pinned-message-bar>span { min-width:0; flex:1; }
+.pinned-message-bar strong,.pinned-message-bar small { display:block; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.pinned-message-bar small { color:var(--muted); margin-top:3px; font-weight:400; }
+.pinned-message-list { list-style:none; padding:0; margin:0; }
+.pinned-message-list>li { padding:12px 0; border-bottom:1px solid var(--border); overflow-wrap:anywhere; }
+.pinned-message-list p { white-space:pre-wrap; margin:4px 0 10px; }
+.pinned-message-list small { display:block; color:var(--muted); margin:8px 0; }
+.pinned-message-list .attachment-list { max-width:100%; }
+.message-list .message:has(.inline-media-card) { width:min(92%,390px); }
+.message>.attachment-list { width:100%; min-width:0; max-width:100%; grid-template-columns:minmax(0,1fr); }
+.attachment-list .inline-media-card { width:100%; max-width:340px; min-width:0; padding:0; gap:0; background:transparent; border:0; }
+.inline-media { width:100%; min-width:0; border-radius:10px; overflow:hidden; background:#0002; }
+.inline-media .inline-image { display:block; padding:0; width:100%; background:none; border-radius:0; }
+.inline-image img { display:block; width:100%; height:auto; max-height:350px; object-fit:contain; }
+.inline-media video { display:block; width:100%; height:auto; min-height:150px; max-height:350px; }
+.inline-audio { padding:10px; background:#0000000c; }
+.inline-audio audio { width:100%; height:44px; display:block; }
+.audio-name { display:block; font-size:12px; margin:0 3px 8px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.media-placeholder { min-height:150px; min-width:min(220px,100%); display:grid; place-items:center; padding:12px; font-size:12px; }
+.inline-audio .media-placeholder { min-height:55px; }
+.inline-media-tools { display:flex; gap:8px; align-items:center; width:100%; color:var(--muted); }
+.inline-media-tools small { flex:1; font-size:10px; }
+.inline-media-tools .icon-button { width:28px; height:28px; padding:5px; color:var(--muted); }
+.media-error { font-size:12px; max-width:100%; overflow-wrap:anywhere; }
+.document-card .file-download-button { display:flex; gap:10px; }
+.emoji-picker { display:flex; flex-direction:column; padding:10px; width:min(390px,calc(100vw - 32px)); max-height:min(460px,65dvh); }
+.emoji-search { display:flex; align-items:center; gap:8px; border-bottom:1px solid var(--border); padding:0 2px 8px; flex-shrink:0; }
+.emoji-search input { padding:9px 0; min-width:0; width:100%; border:0; background:transparent; outline-offset:1px; font-size:14px; }
+.emoji-picker .emoji-search button { font-size:14px; width:30px; height:32px; padding:5px; flex-shrink:0; }
+.emoji-categories { display:flex; overflow-x:auto; gap:2px; padding:8px 0; flex-shrink:0; }
+.emoji-categories button { flex:0 0 32px; min-width:32px; height:36px; padding:4px; font-size:21px; border-radius:7px; }
+.emoji-categories button[aria-pressed=true] { background:var(--accent-soft); box-shadow:inset 0 -2px var(--accent); }
+.emoji-filter { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:2px 4px 8px; font-size:11px; color:var(--muted); flex-shrink:0; }
+.emoji-filter select { width:105px; min-height:30px; padding:4px; font-size:11px; }
+.emoji-results { min-height:120px; min-width:0; overflow:auto; overscroll-behavior:contain; display:grid; grid-template-columns:repeat(8,minmax(0,1fr)); align-content:start; }
+.emoji-results>button { padding:6px 0; font-size:27px; min-height:42px; border-radius:7px; font-family:'Segoe UI Emoji','Apple Color Emoji','Noto Color Emoji',sans-serif; }
+.emoji-results>p,.emoji-results>.emoji-more { grid-column:1/-1; font-size:12px; text-align:center; }
+.emoji-footer { display:block; padding:8px 4px 0; font-size:10px; color:var(--muted); flex-shrink:0; }
+@media (max-width:680px) {
+  .chat-grid { grid-template-columns:minmax(0,1fr); }
+  .sidebar-splitter { display:none; }
+  .pinned-message-bar { top:-16px; }
+  .emoji-picker { width:min(370px,calc(100vw - 32px)); max-height:60dvh; }
+  .emoji-results>button { font-size:25px; }
+  .inline-media video { min-height:110px; }
+}

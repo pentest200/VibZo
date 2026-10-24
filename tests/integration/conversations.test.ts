@@ -4,7 +4,7 @@ import { Long } from 'mongodb';
 import { createApi } from '@chat/api';
 import { loadConfig } from '@chat/config';
 import { registerSchema, loginSchema, conversationSchema, historySchema, inboxSnapshotSchema, inboxFeedSchema } from '@chat/contracts';
-import { AuthService, ConversationService, createMongoClient, runMigrations, unseal } from '@chat/domain';
+import { AuthService, ConversationService, SyncService, SafetyService, SafetyMaintenance, createMongoClient, runMigrations, unseal } from '@chat/domain';
 import type { EmailJobRecord, UserRecord, ConversationRecord, MembershipRecord, MessageRecord, InboxCounter } from '@chat/domain';
 
 const config = loadConfig({ ...process.env, NODE_ENV: 'test', MONGODB_DATABASE: `conversation_test_${randomUUID().replaceAll('-', '')}`, MAX_GROUP_MEMBERS: '3' });
@@ -206,4 +206,49 @@ it('rejects concurrent migration leases, recovers expiration and preserves stric
   await locks.updateOne({ _id: 'schema' }, { $set: { leaseUntil: new Date(0) } }); await runMigrations(db);
   await expect(db.collection('memberships').insertOne({ conversationId: randomUUID(), role: 'administrator' })).rejects.toMatchObject({ code: 121 });
   expect((await locks.findOne({ _id: 'schema' }))!.owner).toBeNull();
+});
+
+it('clears only the caller history across pagination, replay and pinned snapshots with idempotent HTTP actions', async () => {
+  const a = await user('cleara'), b = await user('clearb'), outsider = await user('clearother'), sync = new SyncService(auth), id = (await service.createDirect(a.token, b.id)).conversationId;
+  const sent = await sync.send(b.token, { v: 1, conversationId: id, clientMessageId: randomUUID(), text: 'Before clearing', attachmentIds: [] });
+  const pinned = await sync.createSnapshot(a.token, 'conversation', id), key = randomUUID(), body = { action: 'clear', commandId: key };
+  expect((await request(a, `/conversations/${id}/actions`, 'POST', body, '')).status).toBe(403);
+  expect((await request(a, `/conversations/${id}/actions`, 'POST', { ...body, userId: b.id })).status).toBe(400);
+  expect((await request(outsider, `/conversations/${id}/actions`, 'POST', body)).status).toBe(403);
+  expect((await request(a, `/conversations/${id}/actions`, 'POST', body)).status).toBe(200);
+  const watermark = (await service.detail(a.token, id)).watermark;
+  expect((await request(a, `/conversations/${id}/actions`, 'POST', body)).status).toBe(200); expect((await service.detail(a.token, id)).watermark).toBe(watermark);
+  expect((await request(a, `/conversations/${id}/actions`, 'POST', { ...body, action: 'delete' })).status).toBe(409);
+  expect((await sync.snapshot(a.token, id)).messages).toEqual([]); expect((await service.history(a.token, id, watermark, undefined, 1)).messages).toEqual([]);
+  expect((await sync.replay(a.token, id, '0')).events.some(event => event.eventId === sent.eventId)).toBe(false);
+  await forbidden(sync.snapshotPage(a.token, pinned.id, 0)); expect((await sync.snapshot(b.token, id)).messages).toHaveLength(1);
+  await sync.send(b.token, { v: 1, conversationId: id, clientMessageId: randomUUID(), text: 'After clearing', attachmentIds: [] });
+  expect((await sync.snapshot(a.token, id)).messages.map(message => message.text)).toEqual(['After clearing']);
+});
+
+it('hides a deleted direct chat only for its caller and restores it on a new message or explicit open', async () => {
+  const a = await user('hidea'), b = await user('hideb'), sync = new SyncService(auth), id = (await service.createDirect(a.token, b.id)).conversationId;
+  await sync.send(a.token, { v: 1, conversationId: id, clientMessageId: randomUUID(), text: 'Old message', attachmentIds: [] });
+  await service.manage(a.token, id, randomUUID(), 'delete'); expect((await service.inbox(a.token, undefined, 100)).items).toEqual([]); expect((await service.inbox(b.token, undefined, 100)).items).toHaveLength(1);
+  const ticket = await sync.createSnapshot(a.token, 'inbox'); expect((await sync.snapshotPage(a.token, ticket.id, 0)).data).toEqual([]);
+  await sync.send(b.token, { v: 1, conversationId: id, clientMessageId: randomUUID(), text: 'New message restores chat', attachmentIds: [] });
+  expect((await service.inbox(a.token, undefined, 100)).items.map(item => item.id)).toEqual([id]); expect((await sync.snapshot(a.token, id)).messages.map(message => message.text)).toEqual(['New message restores chat']);
+  await service.manage(a.token, id, randomUUID(), 'delete'); expect(await service.createDirect(a.token, b.id)).toEqual({ conversationId: id }); expect((await service.inbox(a.token, undefined, 100)).items).toHaveLength(1); expect((await sync.snapshot(a.token, id)).messages).toEqual([]);
+});
+
+it('allows only a group owner to delete for everyone and revokes member, invitation, replay and write access atomically', async () => {
+  const a = await user('deleteowner'), b = await user('deleteadmin'), invited = await user('deleteinvite'), sync = new SyncService(auth), id = await group(a, 'Delete this group');
+  await join(a, b, id); await service.changeRole(a.token, id, b.id, 'admin'); await service.invite(a.token, id, invited.id);
+  await sync.send(a.token, { v: 1, conversationId: id, clientMessageId: randomUUID(), text: 'Group content', attachmentIds: [] });
+  await forbidden(service.manage(b.token, id, randomUUID(), 'delete-group')); await forbidden(service.manage(a.token, id, randomUUID(), 'delete'));
+  const key = randomUUID(); await service.manage(a.token, id, key, 'delete-group'); await service.manage(a.token, id, key, 'delete-group');
+  for (const u of [a, b, invited]) { await forbidden(service.detail(u.token, id)); expect((await service.inbox(u.token, undefined, 100)).items.some(item => item.id === id)).toBe(false); }
+  await forbidden(service.respondInvitation(invited.token, id, true)); await forbidden(sync.snapshot(b.token, id)); await forbidden(sync.replay(b.token, id, '0'));
+  await forbidden(sync.send(b.token, { v: 1, conversationId: id, clientMessageId: randomUUID(), text: 'Denied after deletion', attachmentIds: [] }));
+  expect(await db.collection('memberships').countDocuments({ conversationId: id, state: { $in: ['active', 'invited'] } })).toBe(0);
+  expect(await db.collection('conversationEvents').countDocuments({ conversationId: id, kind: 'conversation.deleted' })).toBe(1);
+  const maintenance = new SafetyMaintenance(new SafetyService(auth));
+  expect(await maintenance.groupDeletionOnce()).toBe(true); expect(await maintenance.groupDeletionOnce()).toBe(true); expect(await maintenance.groupDeletionOnce()).toBe(false);
+  expect(await db.collection('messages').findOne({ conversationId: id })).toMatchObject({ text: '', deletedAt: expect.any(Date) });
+  expect(await db.collection<ConversationRecord>('conversations').findOne({ _id: id })).toMatchObject({ historyPurgedAt: expect.any(Date) });
 });

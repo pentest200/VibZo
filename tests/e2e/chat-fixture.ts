@@ -33,5 +33,7 @@ export async function search(page: Page, username: string, invite = false) {
 }
 export async function messageActions(page: Page, text?: string) {
   const rows = page.locator('.message-list > li.message');
-  await (text ? rows.filter({ hasText: text }).first() : rows.first()).hover();
+  const row = text ? rows.filter({ hasText: text }).first() : rows.first();
+  await row.hover();
+  if (!await row.locator('.message-options').evaluate(node => node.hasAttribute('open'))) await row.getByLabel('Message actions', { exact: true }).click();
 }

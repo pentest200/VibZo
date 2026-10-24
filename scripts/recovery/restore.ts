@@ -22,6 +22,10 @@ export async function restoreSnapshot(config: Config, snapshotPath: string, poli
   if (!Array.isArray(meta) || !Array.isArray(objects) || objects.length > 128 || manifest.entries[0]?.name !== 'database' || manifest.entries.length !== objects.length + 1 || objects.some((object, i) => !object || object.entry !== manifest.entries[i + 1]?.name || object.bytes !== manifest.entries[i + 1]?.bytes || object.sha256 !== manifest.entries[i + 1]?.sha256 || !object.key.startsWith(manifest.source + '/') || object.bytes > config.MAX_ATTACHMENT_BYTES)) throw new RecoveryError('Snapshot inventory is inconsistent');
   const markers = parse<{ _id: string; appliedAt: Date }[]>(String(manifest.detail['markers']));
   if (!supportedMarkers(markers)) throw new RecoveryError('Snapshot schema is unsupported');
+  const experience = markers.some(row => row._id === '010_chat_experience');
+  const interactions = markers.some(row => row._id === '011_chat_interactions');
+  if (!interactions && (current.policy.messages.some(row => (row['hiddenFor'] as unknown[] | undefined)?.length) || current.policy.memberships.some(row => row['pinned'] === true || row['archived'] === true))) throw new RecoveryError('Current personal message/chat policy requires a schema-011 snapshot');
+  if (!experience && (current.policy.memberships.some(row => row['hidden'] === true) || current.policy.conversations.some(row => row['deletionRequestedAt']))) throw new RecoveryError('Current chat deletion policy requires a schema-010 snapshot');
   const client = createMongoClient(config), s3 = storage(config), owner = randomUUID(); let claimed = false, dump: ReturnType<typeof tool> | undefined, stream: PassThrough | undefined, upload: Promise<unknown> | undefined, uploadError: unknown;
   const db = client.db(target);
   try {
@@ -55,7 +59,7 @@ export async function restoreSnapshot(config: Config, snapshotPath: string, poli
           const actual = await catalog(db);
           if (canonical(actual) !== canonical(meta)) { const names = [...new Set([...actual, ...meta].map(row => row.name))].filter(name => canonical(actual.find(row => row.name === name) ?? null) !== canonical(meta.find(row => row.name === name) ?? null)); throw new RecoveryError(`Restored metadata, indexes or row counts differ: ${names.join(', ')}`); }
           await inspectStage?.('loaded');
-          await sanitize(client, db, { ...config, MONGODB_DATABASE: target }, current.policy); return;
+          await sanitize(client, db, { ...config, MONGODB_DATABASE: target }, current.policy, experience, interactions); return;
         }
         if (!stream || !approved || !object) return;
         stream.end(); await upload; if (uploadError) throw new RecoveryError('Approved object copy failed');

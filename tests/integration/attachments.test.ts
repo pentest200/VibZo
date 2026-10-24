@@ -3,10 +3,11 @@ import { promisify } from 'node:util';
 import { createHash, randomUUID } from 'node:crypto';
 import { deflateSync } from 'node:zlib';
 import { beforeAll, afterAll, expect, it } from 'vitest';
-import { AttachmentService, AttachmentWorker, AuthService, SyncService, attachmentMetrics } from '@chat/domain';
+import { AttachmentService, AttachmentWorker, AuthService, SyncService, SafetyService, SafetyMaintenance, attachmentMetrics } from '@chat/domain';
 import type { AttachmentJob, AttachmentQuota } from '@chat/domain';
 import { createApi } from '@chat/api';
 import { messagingFixture, command } from './messaging-fixture.js';
+import { tinyGif, waveTone } from '../fixtures/media.js';
 const execute = promisify(execFile);
 let f: Awaited<ReturnType<typeof messagingFixture>>, files: AttachmentService, worker: AttachmentWorker, sync: SyncService;
 const bytes = Buffer.from('A real private file.\n');
@@ -24,6 +25,47 @@ async function upload(token: string, id: string, data = bytes, kind = 'text', na
   const key = randomUUID(); expect(await files.finalize(token, ticket.attachment.id, key)).toEqual(await files.finalize(token, ticket.attachment.id, key)); return ticket;
 }
 async function processAll() { for (let count = 0; count < 30 && await worker.runOnce(); count++) { /* drain bounded fixture jobs */ } }
+it('scans and preserves GIF/audio bytes, grants private inline previews and denies cleared or revoked history', async () => {
+  const { a, b, id } = await pair('preview'), outsider = await f.user('previewother');
+  const samples = [{ kind: 'gif', bytes: tinyGif, type: 'image/gif' }, { kind: 'wav', bytes: waveTone(), type: 'audio/wav' }];
+  for (const sample of samples) {
+    const ticket = await upload(a.token, id, sample.bytes, sample.kind, `sample.${sample.kind}`); await processAll();
+    const row = await files.files().findOne({ _id: ticket.attachment.id }); expect(row).toMatchObject({ state: 'ready', kind: sample.kind, approvedType: sample.type });
+    await expect(files.download(b.token, ticket.attachment.id, true)).rejects.toMatchObject({ status: 403 });
+    await sync.send(a.token, { ...command(id, `Media ${sample.kind}`), attachmentIds: [ticket.attachment.id] });
+    const grant = await files.download(b.token, ticket.attachment.id, true), response = await fetch(grant.url);
+    expect(response.headers.get('content-disposition')).toMatch(/^inline;/); expect(response.headers.get('content-type')).toBe(sample.type); expect(response.headers.get('cache-control')).toContain('no-store'); expect(Buffer.from(await response.arrayBuffer())).toEqual(sample.bytes);
+    expect((await fetch(grant.url.split('?')[0]!)).status).toBe(403); await expect(files.download(outsider.token, ticket.attachment.id, true)).rejects.toMatchObject({ status: 403 });
+    await sync.manage(b.token, id, randomUUID(), 'clear'); await expect(files.download(b.token, ticket.attachment.id, true)).rejects.toMatchObject({ status: 403 });
+    expect((await fetch((await files.download(a.token, ticket.attachment.id)).url)).headers.get('content-disposition')).toMatch(/^attachment;/);
+  }
+});
+
+it('rejects media signature spoofing and trailing GIF payloads before publishing a preview', async () => {
+  const { a, id } = await pair('badmedia');
+  const bad = await upload(a.token, id, bytes, 'wav', 'fake.wav');
+  const infected = Buffer.concat([tinyGif.subarray(0, -1), Buffer.from('X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*'), Buffer.from([0x3b])]);
+  const virus = await upload(a.token, id, infected, 'gif', 'infected.gif'); await processAll();
+  for (const ticket of [bad, virus]) { expect((await files.files().findOne({ _id: ticket.attachment.id }))?.state).toBe('rejected'); await expect(files.download(a.token, ticket.attachment.id, true)).rejects.toMatchObject({ status: 403 }); }
+});
+
+it('revokes deleted-group media immediately and batches both linked and unused files into durable cleanup', async () => {
+  const a = await f.user('purgeowner'), b = await f.user('purgepeer'), id = (await sync.createGroup(a.token, randomUUID(), 'Purge group media')).conversationId;
+  await sync.invite(a.token, id, b.id); await sync.respondInvitation(b.token, id, true);
+  const linked = await upload(a.token, id, tinyGif, 'gif', 'linked.gif'), staged = await upload(b.token, id, waveTone(), 'wav', 'unused.wav'); await processAll();
+  await sync.send(a.token, { ...command(id, 'Deleted group caption'), attachmentIds: [linked.attachment.id] });
+  expect((await fetch((await files.download(b.token, linked.attachment.id, true)).url)).status).toBe(200);
+  await sync.manage(a.token, id, randomUUID(), 'delete-group');
+  for (const actor of [a, b]) await expect(files.download(actor.token, linked.attachment.id, true)).rejects.toMatchObject({ status: 403 });
+  await expect(files.download(b.token, staged.attachment.id, true)).rejects.toMatchObject({ status: 403 });
+  const maintenance = new SafetyMaintenance(new SafetyService(f.auth)); await maintenance.groupDeletionOnce(); await maintenance.groupDeletionOnce();
+  for (const ticket of [linked, staged]) expect(await files.files().findOne({ _id: ticket.attachment.id })).toMatchObject({ state: 'deleting' });
+  expect(await f.db.collection('messages').findOne({ conversationId: id })).toMatchObject({ text: '', deletedAt: expect.any(Date) });
+  // Advance only fixture upload deadlines past the established in-flight grace; do not alter production limits.
+  await files.files().updateMany({ conversationId: id }, { $set: { uploadExpiresAt: new Date(0) } }); await worker.maintenanceOnce();
+  for (const ticket of [linked, staged]) { const row = await files.files().findOne({ _id: ticket.attachment.id }); expect(row).toMatchObject({ state: 'deleted', reservedBytes: 0 }); await expect(files.storage.headApproved(row!.approvedKey!)).rejects.toThrow(); }
+});
+
 it('enforces signed size/type/key/metadata and actual browser CORS, then binds immutable approved bytes', async () => {
   const { a, b, id } = await pair('signed'), ticket = await reserve(a.token, id);
   expect((await fetch(ticket.url, { method: 'PUT', headers: ticket.headers, body: Buffer.from('wrong length') })).status).toBe(403);
@@ -151,6 +193,16 @@ it('reports backlog without private keys and fails closed when an approved objec
   const { a, id } = await pair('missing'), ticket = await upload(a.token, id); await processAll(); const row = (await files.files().findOne({ _id: ticket.attachment.id }))!;
   await files.storage.remove(f.config.S3_APPROVED_BUCKET, row.approvedKey!); await expect(files.download(a.token, row._id)).rejects.toMatchObject({ status: 503 });
   const metrics = await attachmentMetrics(f.db); expect(metrics).toContain('chat_attachment_jobs{state="pending"}'); expect(metrics).not.toContain('http'); expect(metrics).not.toContain(row.sourceKey);
+});
+
+it('denies new preview/download grants for personally deleted messages while retaining the peer copy and stored object', async () => {
+  const { a, b, id } = await pair('personalhide'), ticket = await upload(a.token, id); await processAll();
+  const sent = await sync.send(a.token, { ...command(id, 'Shared private file'), attachmentIds: [ticket.attachment.id] });
+  expect((await fetch((await files.download(b.token, ticket.attachment.id, true)).url)).status).toBe(200);
+  await sync.mutate(b.token, { kind: 'hide', commandId: randomUUID(), conversationId: id, messageId: sent.message.messageId });
+  await expect(files.download(b.token, ticket.attachment.id, true)).rejects.toMatchObject({ status: 403 }); await expect(files.download(b.token, ticket.attachment.id)).rejects.toMatchObject({ status: 403 });
+  expect((await sync.snapshot(b.token, id)).messages).toHaveLength(0); expect((await sync.snapshot(a.token, id)).messages[0]?.attachments).toHaveLength(1);
+  expect((await fetch((await files.download(a.token, ticket.attachment.id, true)).url)).status).toBe(200); expect((await files.files().findOne({ _id: ticket.attachment.id }))?.state).toBe('ready');
 });
 
 it('cleans ready sources, repairs late uploads, expires grants and deletes abandoned ready files without double quota release', async () => {

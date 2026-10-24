@@ -4,6 +4,7 @@ import type { LocalTrack, RemoteTrack } from 'livekit-client';
 import { joinCallSchema } from '@chat/contracts';
 import type { AuthSession, CallView } from '@chat/contracts';
 import { api, RequestError } from './api.js';
+import { waitForCallTicket } from './call-ticket.js';
 
 export default function CallMedia({ account, call, wanted }: { account: AuthSession; call: CallView; wanted: boolean }) {
   const [room, setRoom] = useState<Room | null>(null), [revision, setRevision] = useState(0), [state, setState] = useState('Media stopped'), [error, setError] = useState(''), [busy, setBusy] = useState(false), [retry, setRetry] = useState(0);
@@ -28,8 +29,7 @@ export default function CallMedia({ account, call, wanted }: { account: AuthSess
         // A replay must not consume two issuance slots and discard the accepted token.
         const key = `${call.id}:${call.generation}:${retry}:${account.csrfToken}`;
         if (pendingTicket.current?.key !== key) {
-          const wait = Math.max(0, nextTicketAt.current - Date.now());
-          if (wait) { setState('Waiting to rejoin'); await new Promise(resolve => setTimeout(resolve, wait)); if (!active) return; }
+          if (!await waitForCallTicket(() => nextTicketAt.current, () => active, () => setState('Waiting to rejoin'))) return;
           // Recheck after a wait: another live effect may already own this request.
           if (pendingTicket.current?.key !== key) {
             nextTicketAt.current = Date.now() + 5100;
@@ -64,7 +64,7 @@ export default function CallMedia({ account, call, wanted }: { account: AuthSess
     tracks.push({ key: `${participant.identity}:${publication.trackSid}`, track: publication.track, local: participant === room.localParticipant, name: call.participants.find(p => participant.identity.startsWith(`${p.userId}:`))?.displayName ?? 'Participant', source: publication.source });
   }
   return <div className="call-media" data-media-revision={revision}><p role="status" aria-label="Media connection">{state}</p>{error && <p className="notice error" role="alert">{error}</p>}
-    {wanted && <button className="button-secondary" onClick={() => setRetry(value => value + 1)}>Retry media connection</button>}
+    {wanted && (state !== 'connected' || error) && <button className="button-secondary" onClick={() => setRetry(value => value + 1)}>Retry media connection</button>}
     {room?.canPlaybackAudio === false && <button onClick={() => { void control(() => room.startAudio()); }}>Play call audio</button>}
     {local && wanted && <div className="control-row"><button disabled={busy || state !== 'connected'} aria-pressed={local.isMicrophoneEnabled} onClick={() => { void control(() => local.setMicrophoneEnabled(!local.isMicrophoneEnabled)); }}>{local.isMicrophoneEnabled ? 'Mute microphone' : 'Enable microphone'}</button>
       {call.mode === 'video' && <button disabled={busy || state !== 'connected'} aria-pressed={local.isCameraEnabled} onClick={() => { void control(() => local.setCameraEnabled(!local.isCameraEnabled)); }}>{local.isCameraEnabled ? 'Turn camera off' : 'Enable camera'}</button>}

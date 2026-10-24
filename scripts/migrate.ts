@@ -1,5 +1,5 @@
 import { loadConfig } from '@chat/config';
 import { createMongoClient, runMigrations } from '@chat/domain';
 const config = loadConfig(); const client = createMongoClient(config);
-try { await client.connect(); await runMigrations(client.db(config.MONGODB_DATABASE)); console.log('001_auth, 002_conversations, 003_messaging, 004_sync, 005_attachments, 006_safety, 007_calls, 008_operations and 009_avatars migrations applied'); }
+try { await client.connect(); await runMigrations(client.db(config.MONGODB_DATABASE)); console.log('001_auth through 011_chat_interactions migrations applied'); }
 finally { await client.close(); }

@@ -15,6 +15,11 @@ const paths = {
   shield: 'M12 22s9-4 9-11V4l-9-3-9 3v7c0 7 9 11 9 11m-4-10 3 3 5-5',
   check: 'm4 12 5 5L20 6', refresh: 'M20 7V2l-4 4M4 17v5l4-4M20 7a9 9 0 0 0-15-2M4 17a9 9 0 0 0 15 2',
   history: 'M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l3 2',
+  pin: 'm16 3 5 5-4 2-3 6-6-6 6-3 2-4ZM8 16l-5 5M9 9l6 6',
+  archive: 'M3 4h18v5H3zM5 9v11h14V9M10 13h4',
+  doubleCheck: 'm2 12 4 4L16 5m-6 10 3 3L23 8',
+  download: 'M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5',
+  expand: 'M8 3H3v5M16 3h5v5M3 16v5h5M21 16v5h-5',
 } as const;
 export function Icon({ name, size = 24 }: { name: keyof typeof paths; size?: number }) {
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={paths[name]} /></svg>;

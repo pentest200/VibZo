@@ -46,7 +46,7 @@ async function attachmentChecks() {
 }
 async function safetyWork() {
   while (!stopped) {
-    for (const task of [() => notifications.expandOnce(), () => notifications.runOnce(), () => maintenance.deletionOnce(), () => maintenance.retentionOnce(), () => maintenance.eventRetentionOnce(), () => maintenance.inboxRetentionOnce()]) {
+    for (const task of [() => notifications.expandOnce(), () => notifications.runOnce(), () => maintenance.deletionOnce(), () => maintenance.groupDeletionOnce(), () => maintenance.retentionOnce(), () => maintenance.eventRetentionOnce(), () => maintenance.inboxRetentionOnce()]) {
       if (stopped) break;
       try { await job('safety.process', task); } catch { logger.warn({ code: 'SAFETY_DELAYED' }, 'safety maintenance delayed'); }
     }

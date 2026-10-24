@@ -57,18 +57,18 @@ test('chat, report forms and group controls stay keyboard accessible at mobile w
   await expect(page.locator('.member-list')).toContainText('Invitation pending');
   await page.getByRole('button', { name: 'Report conversation', exact: true }).focus(); await page.keyboard.press('Enter');
   await page.keyboard.press('Tab'); await expect(page.getByRole('combobox', { name: 'Report reason', exact: true })).toBeFocused();
-  await page.keyboard.press('Shift+Tab'); await expect(page.getByRole('button', { name: 'Report conversation', exact: true })).toBeFocused();
+  await page.keyboard.press('Shift+Tab'); await expect(page.getByRole('button', { name: 'Close Report conversation', exact: true })).toBeFocused();
   await page.keyboard.press('Tab'); await expect(page.getByRole('combobox', { name: 'Report reason', exact: true })).toBeFocused();
   for (const width of [1280, 390, 320]) {
     await page.setViewportSize({ width, height: 900 }); await reflow(page); await accessible(page, info, `group-${width}`);
     await page.screenshot({ path: `.cache/qa/a11y-chat-${width}.png`, fullPage: true });
   }
+  await page.getByRole('button', { name: 'Submit report', exact: true }).click(); await expect(page.getByRole('status').filter({ hasText: 'Report submitted' })).toBeVisible();
   const jump = page.getByRole('link', { name: 'Skip to conversation', exact: true }); await jump.focus(); await page.keyboard.press('Enter'); await expect(page.locator('#conversation-pane')).toBeFocused();
   await page.getByRole('button', { name: 'Conversation info', exact: true }).click();
   const settings = page.getByText('Group settings', { exact: true }); await settings.focus(); await page.keyboard.press('Space'); await expect(page.getByLabel('Group title', { exact: true })).not.toBeVisible();
   await page.keyboard.press('Space'); await expect(page.getByLabel('Group title', { exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Close conversation info', exact: true }).click();
-  await page.getByRole('button', { name: 'Submit report', exact: true }).click(); await expect(page.getByRole('status').filter({ hasText: 'Report submitted' })).toBeVisible();
 });
 
 test('unverified accounts disclose restricted actions and retain verification recovery', async ({ page, request }, info) => {

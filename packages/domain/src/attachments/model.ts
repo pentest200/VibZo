@@ -12,4 +12,4 @@ export interface AttachmentJob { _id: string; schemaVersion: 1; state: 'pending'
   leaseOwner: string | null; leaseUntil: Date; availableAt: Date; candidateKey: string | null; createdAt: Date }
 export const attachmentReference = (row: AttachmentRecord): AttachmentReference => ({ id: row._id, name: row.name, kind: row.kind, size: row.state === 'ready' ? row.approvedSize : row.size });
 export const attachmentView = (row: AttachmentRecord) => ({ ...attachmentReference(row), state: row.state, error: row.error, expiresAt: row.expiresAt.toISOString() });
-export const contentTypes: Record<AttachmentKind, string> = { jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', pdf: 'application/pdf', text: 'text/plain; charset=utf-8' };
+export const contentTypes: Record<AttachmentKind, string> = { jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', pdf: 'application/pdf', text: 'text/plain; charset=utf-8', gif: 'image/gif', mp4: 'video/mp4', webm: 'video/webm', mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg' };

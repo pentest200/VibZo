@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { idSchema } from './primitives.js';
-export const attachmentKindSchema = z.enum(['jpeg', 'png', 'webp', 'pdf', 'text']);
+export const attachmentKindSchema = z.enum(['jpeg', 'png', 'webp', 'pdf', 'text', 'gif', 'mp4', 'webm', 'mp3', 'wav', 'ogg']);
 export const attachmentStateSchema = z.enum(['pending', 'uploaded', 'processing', 'ready', 'rejected', 'deleting', 'deleted']);
 export const reserveAttachmentSchema = z.strictObject({ commandId: idSchema, conversationId: idSchema,
   name: z.string().min(1).max(120).refine(value => !Array.from(value).some(char => char.codePointAt(0)! < 32 || char.codePointAt(0) === 127 || '/\\'.includes(char)), 'Use a plain file name.'),

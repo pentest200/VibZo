@@ -6,6 +6,7 @@ import { moderationAccessSchema, notificationSettingsSchema, reportListSchema } 
 import type { AuthSession } from '@chat/contracts';
 import { api } from './api.js';
 import { clearAccount } from './auth-state.js';
+import { Modal } from './dialog.js';
 
 export function NotificationSettings({ account }: { account: AuthSession }) {
   const [busy, setBusy] = useState(false), [notice, setNotice] = useState(''), [error, setError] = useState('');
@@ -40,7 +41,7 @@ export function ReportButton({ account, conversationId, messageId }: { account: 
     try { await api('/safety/reports', { method: 'POST', csrf: account.csrfToken, body: { commandId, conversationId, messageId, reason } }); setNotice('Report submitted for review.'); setOpen(false); }
     catch (e) { setError(e instanceof Error ? e.message : 'Could not submit report.'); } finally { setBusy(false); }
   }
-  return <span><button className="button-secondary" disabled={!!notice} onClick={() => setOpen(value => !value)}>{messageId ? 'Report message' : 'Report conversation'}</button>{open && <form onSubmit={event => { void submit(event); }}><label>Report reason<select value={reason} disabled={busy} onChange={event => setReason(event.target.value)}><option value="spam">Spam</option><option value="harassment">Harassment</option><option value="unsafe">Unsafe content</option><option value="other">Other</option></select></label><p className="hint">Sends a reference and category to moderators. Message text is not copied into the report.</p><button disabled={busy}>Submit report</button></form>}{notice && <span role="status">{notice}</span>}{error && <span role="alert">{error}</span>}</span>;
+  return <span className="report-control"><button className="button-secondary" disabled={!!notice} onClick={() => { setError(''); setOpen(true); }}>{messageId ? 'Report message' : 'Report conversation'}</button>{open && <Modal title={messageId ? 'Report message' : 'Report conversation'} close={() => { if (!busy) setOpen(false); }}><form onSubmit={event => { void submit(event); }}><label className="field">Report reason<select aria-label="Report reason" value={reason} disabled={busy} onChange={event => setReason(event.target.value)}><option value="spam">Spam</option><option value="harassment">Harassment</option><option value="unsafe">Unsafe content</option><option value="other">Other</option></select></label><p className="hint">Sends a reference and category to moderators. Message text is not copied into the report.</p>{error && <p className="notice error" role="alert">{error}</p>}<div className="dialog-actions"><button type="button" className="button-secondary" disabled={busy} onClick={() => setOpen(false)}>Cancel</button><button disabled={busy}>Submit report</button></div></form></Modal>}{notice && <span className="report-notice" role="status">{notice}</span>}</span>;
 }
 export function ModerationPanel({ account }: { account: AuthSession }) {
   const [error, setError] = useState(''), [busy, setBusy] = useState(false);

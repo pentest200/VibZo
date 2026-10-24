@@ -40,7 +40,8 @@ it('reserves exactly once with signed type/size and rejects unverified, injected
   await expect(avatars.downloadAvatar(owner.token, owner.id, {})).rejects.toMatchObject({ status: 403 });
   const direct = (await sync.createDirect(owner.token, other.id)).conversationId;
   await expect(sync.send(owner.token, { ...command(direct, ''), attachmentIds: [ticket.attachment.id] })).rejects.toMatchObject({ status: 409 });
-  for (const action of ['download', 'removeFile', 'retry'] as const) await expect(files[action](owner.token, ticket.attachment.id, randomUUID())).rejects.toMatchObject({ status: 403 });
+  await expect(files.download(owner.token, ticket.attachment.id)).rejects.toMatchObject({ status: 403 });
+  for (const action of ['removeFile', 'retry'] as const) await expect(files[action](owner.token, ticket.attachment.id, randomUUID())).rejects.toMatchObject({ status: 403 });
   expect((await files.list(owner.token, direct)).items).toHaveLength(0);
 });
 it('publishes only approved normalized images and bounds private/no-store bearer grants', async () => {
@@ -147,7 +148,7 @@ it('enforces actual HTTP origin/CSRF/strict schemas without allowing an avatar I
   } finally { await app.close(); }
 });
 it('reruns additive 009 without changing previous markers and accepts only exact supported backup schemas', async () => {
-  const markers = await f.db.collection('schemaMigrations').find().sort({ _id: 1 }).toArray(); expect(markers).toHaveLength(9); await runMigrations(f.db);
+  const markers = await f.db.collection('schemaMigrations').find().sort({ _id: 1 }).toArray(); expect(markers).toHaveLength(11); await runMigrations(f.db);
   expect(await f.db.collection('schemaMigrations').find().sort({ _id: 1 }).toArray()).toEqual(markers);
   expect(supportedMarkers(markers)).toBe(true); expect(supportedMarkers(markers.slice(0, 8))).toBe(true);
   expect(supportedMarkers([...markers, { _id: '010_unknown', appliedAt: new Date() }])).toBe(false);

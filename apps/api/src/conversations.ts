@@ -5,6 +5,7 @@ import { blocksQuerySchema, directCreateSchema, feedQuerySchema, groupCreateSche
 import { DomainError } from '@chat/domain';
 import type { ConversationService } from '@chat/domain';
 import { sessionCookieName } from './auth.js';
+import { conversationActionSchema, conversationPreferenceSchema } from '@chat/contracts';
 export const CONVERSATIONS='CONVERSATION_SERVICE';
 function parse<T>(schema:z.ZodType<T>,value:unknown):T{const result=schema.safeParse(value);if(!result.success)throw new DomainError('INVALID_INPUT','Check the request fields and cursor.',400);return result.data;}
 const ok=()=>({message:'Saved.'});
@@ -13,12 +14,14 @@ export class ConversationController {
   constructor(@Inject(CONVERSATIONS)private readonly service:ConversationService){}
   private token(request:FastifyRequest){return request.cookies[sessionCookieName(this.service.auth.config.COOKIE_SECURE)];}
   private id(value:string){return parse(z.uuid(),value);}
+  @Patch('/conversations/:id/preferences')async preference(@Req()request:FastifyRequest,@Param('id')id:string,@Body()body:unknown){const input=parse(conversationPreferenceSchema,body);await this.service.preference(this.token(request),this.id(id),input.commandId,input.kind,input.active);return ok();}
   @Get('/users')search(@Req()request:FastifyRequest,@Query()query:unknown){const input=parse(searchQuerySchema,query);return this.service.search(this.token(request),input.prefix,input.after,input.limit);}
   @Post('/conversations/direct')@HttpCode(200)direct(@Req()request:FastifyRequest,@Body()body:unknown){return this.service.createDirect(this.token(request),parse(directCreateSchema,body).targetUserId);}
   @Post('/conversations/groups')@HttpCode(200)group(@Req()request:FastifyRequest,@Body()body:unknown){const input=parse(groupCreateSchema,body);return this.service.createGroup(this.token(request),input.clientCommandId,input.title);}
   @Get('/inbox/snapshot')inbox(@Req()request:FastifyRequest,@Query()query:unknown){const input=parse(inboxQuerySchema,query);return this.service.inbox(this.token(request),input.after,input.limit);}
   @Get('/inbox/events')feed(@Req()request:FastifyRequest,@Query()query:unknown){const input=parse(feedQuerySchema,query);return this.service.inboxFeed(this.token(request),input.after,input.through,input.limit);}
   @Get('/conversations/:id')detail(@Req()request:FastifyRequest,@Param('id')id:string){return this.service.detail(this.token(request),this.id(id));}
+  @Post('/conversations/:id/actions')@HttpCode(200)async manage(@Req()request:FastifyRequest,@Param('id')id:string,@Body()body:unknown){const input=parse(conversationActionSchema,body);await this.service.manage(this.token(request),this.id(id),input.commandId,input.action);return ok();}
   @Get('/conversations/:id/messages')history(@Req()request:FastifyRequest,@Param('id')id:string,@Query()query:unknown){const input=parse(historyQuerySchema,query);return this.service.history(this.token(request),this.id(id),input.before,input.through,input.limit);}
   @Post('/conversations/:id/invitations')@HttpCode(200)async invite(@Req()request:FastifyRequest,@Param('id')id:string,@Body()body:unknown){await this.service.invite(this.token(request),this.id(id),parse(inviteSchema,body).targetUserId);return ok();}
   @Post('/conversations/:id/accept')@HttpCode(200)async accept(@Req()request:FastifyRequest,@Param('id')id:string){await this.service.respondInvitation(this.token(request),this.id(id),true);return ok();}

@@ -9,11 +9,27 @@ import type { SafetyService } from './service.js';
 import type { DeletionJob } from './model.js';
 import { safetySchemaReady } from './migrations.js';
 import { pendingCallCleanup } from '../calls/cleanup.js';
+import { experienceSchemaReady } from '../conversations/experience-migration.js';
 
 export class SafetyMaintenance {
   private conversationCursor: string | undefined;
   private inboxCursor: string | undefined;
   constructor(readonly service: SafetyService, private readonly afterClaim?: () => Promise<void>) {}
+  async groupDeletionOnce() {
+    if (!await experienceSchemaReady(this.service.db)) return false;
+    return this.service.run(async session => {
+      // The durable, explicit request excludes pre-existing archived/left groups.
+      // One guarded transaction serializes concurrent workers; no external IO runs under it.
+      const group = await this.service.conversations().findOneAndUpdate({ kind: 'group', state: 'archived', deletionRequestedAt: { $exists: true }, historyPurgedAt: { $exists: false } }, { $inc: { guardVersion: 1 } }, { session, sort: { deletionRequestedAt: 1, _id: 1 }, returnDocument: 'after' });
+      if (!group) return false;
+      const messages = await this.service.db.collection<MessageRecord>('messages').find({ conversationId: group._id, deletedAt: null }, { session }).sort({ creationSeq: 1 }).limit(10).toArray();
+      for (const message of messages) await this.service.scrubMessage(message._id, 'group-deletion', session);
+      const files = await this.service.db.collection<AttachmentRecord>('attachments').find({ conversationId: group._id, state: { $nin: ['deleting', 'deleted'] } }, { session }).sort({ _id: 1 }).limit(20).toArray();
+      if (files.length) await this.service.db.collection<AttachmentRecord>('attachments').updateMany({ _id: { $in: files.map(file => file._id) } }, { $set: { state: 'deleting' } }, { session });
+      if (!messages.length && !files.length) await this.service.conversations().updateOne({ _id: group._id }, { $set: { historyPurgedAt: new Date() } }, { session });
+      return true;
+    });
+  }
   async deletionOnce() {
     const { db } = this.service; if (!await safetySchemaReady(db)) return false;
     const jobs = db.collection<DeletionJob>('accountDeletionJobs');

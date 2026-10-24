@@ -11,18 +11,20 @@ export const reactionSchema = z.enum(['like', 'heart', 'laugh', 'surprise', 'sad
 export const mutationSchema = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('edit'), commandId: idSchema, conversationId: idSchema, messageId: idSchema, expectedVersion: sequenceSchema, text: z.string().min(1).max(8000) }),
   z.strictObject({ kind: z.literal('delete'), commandId: idSchema, conversationId: idSchema, messageId: idSchema, expectedVersion: sequenceSchema }),
+  z.strictObject({ kind: z.literal('hide'), commandId: idSchema, conversationId: idSchema, messageId: idSchema }),
+  z.strictObject({ kind: z.literal('pin'), commandId: idSchema, conversationId: idSchema, messageId: idSchema, active: z.boolean() }),
   z.strictObject({ kind: z.literal('reaction'), commandId: idSchema, conversationId: idSchema, messageId: idSchema, reaction: reactionSchema, active: z.boolean() }),
   z.strictObject({ kind: z.literal('receipt'), commandId: idSchema, conversationId: idSchema, appliedFrom: sequenceSchema, delivered: sequenceSchema, read: sequenceSchema })
 ]);
 export type MessageMutation = z.infer<typeof mutationSchema>;
 export const mutationResultSchema = z.strictObject({ status: z.literal('accepted'), sequence: sequenceSchema });
 export const syncMessageSchema = z.strictObject({ id: idSchema, senderId: idSchema, clientMessageId: idSchema, creationSequence: sequenceSchema, version: sequenceSchema,
-  attachments: z.array(attachmentReferenceSchema).max(8).default([]), text: z.string().max(8000), replyToId: idSchema.nullable(), deleted: z.boolean(), createdAt: z.iso.datetime(),
+  attachments: z.array(attachmentReferenceSchema).max(8).default([]), text: z.string().max(8000), replyToId: idSchema.nullable(), deleted: z.boolean(), pinned: z.boolean().default(false), createdAt: z.iso.datetime(),
   reactions: z.array(z.strictObject({ reaction: reactionSchema, count: z.number().int().min(0).max(50), mine: z.boolean() })).max(6) });
 export type SyncMessage = z.infer<typeof syncMessageSchema>;
 export const receiptSchema = z.strictObject({ userId: idSchema, delivered: sequenceSchema, deliveredFrom: sequenceSchema, read: sequenceSchema, visibleFrom: sequenceSchema });
 export const conversationSnapshotSchema = z.strictObject({ conversationId: idSchema, watermark: sequenceSchema, messages: z.array(syncMessageSchema).max(100),
-  receipts: z.array(receiptSchema).max(50), olderBefore: sequenceSchema.nullable(), capturedAt: z.iso.datetime() });
+  receipts: z.array(receiptSchema).max(50), pinnedMessages: z.array(syncMessageSchema).max(50).default([]), olderBefore: sequenceSchema.nullable(), capturedAt: z.iso.datetime() });
 export type ConversationSnapshot = z.infer<typeof conversationSnapshotSchema>;
 export const replayQuerySchema = z.strictObject({ after: sequenceSchema.default('0'), through: sequenceSchema.optional(), limit: z.coerce.number().int().min(1).max(100).default(100) });
 export const replayResultSchema = z.strictObject({ events: z.array(brokerEventSchema).max(100), nextCursor: sequenceSchema, watermark: sequenceSchema, hasMore: z.boolean() });

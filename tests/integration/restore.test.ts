@@ -6,7 +6,7 @@ import { Long } from 'mongodb';
 import { beforeAll, afterAll, expect, it } from 'vitest';
 import { createApi } from '@chat/api';
 import { AuthService, AvatarService, avatarSchemaReady, AttachmentService, AttachmentStorage, AttachmentWorker, CallService, CallWorker, SyncService, SafetyService, BrokerTransport, OutboxRelay, EventConsumer, FanoutWorker, recoveryReady, runMigrations, unseal } from '@chat/domain';
-import type { AttachmentRecord, EmailJobRecord, OutboxRecord, MessageRecord, ConversationRecord } from '@chat/domain';
+import type { AttachmentRecord, EmailJobRecord, OutboxRecord, MessageRecord, ConversationRecord, MembershipRecord, VisibilityRecord } from '@chat/domain';
 import { captureSnapshot, capturePolicy } from '../../scripts/recovery/capture.js';
 import { restoreSnapshot } from '../../scripts/recovery/restore.js';
 import { createBundle, inspectBundle, one } from '../../scripts/recovery/bundle.js';
@@ -118,8 +118,8 @@ it('restores through the real tool while auth, readiness, old claims and migrati
     const port = await reservePort(), process = await roleProcess('worker', { MONGODB_DATABASE: target, SMTP_PORT: '1' }, port);
     try { expect((await fetch(process.url + '/health/ready')).status).toBe(503); expect((await db.collection<OutboxRecord>('outbox').findOne({ _id: accepted.eventId }))?.leaseOwner).toBe('stopped-source-worker'); } finally { await process.close(); }
   }); metrics['restoreMs'] = performance.now() - start; expect(loaded).toBe(true);
-  expect(await recoveryReady(f.client.db(target))).toBe(true); expect(await f.client.db(target).collection('schemaMigrations').countDocuments()).toBe(9);
-  await runMigrations(f.client.db(target)); expect(await f.client.db(target).collection('schemaMigrations').countDocuments()).toBe(9);
+  expect(await recoveryReady(f.client.db(target))).toBe(true); expect(await f.client.db(target).collection('schemaMigrations').countDocuments()).toBe(11);
+  await runMigrations(f.client.db(target)); expect(await f.client.db(target).collection('schemaMigrations').countDocuments()).toBe(11);
   targetAuth = new AuthService(config, f.client, f.client.db(target)); await targetAuth.initialize(); targetSync = new SyncService(targetAuth);
   const indexes = await targetAuth.db.collection('messageCommands').listIndexes().toArray(); expect(indexes.some(index => index.unique && index.key['clientMessageId'] === 1)).toBe(true);
   await expect(targetAuth.db.collection('messages').insertOne({ invalid: true })).rejects.toMatchObject({ code: 121 });
@@ -204,4 +204,42 @@ it('runs the actual CLI with runtime-only keys and a fresh target', async () => 
   const captured = JSON.parse(await run(['backup', cliSnapshot])) as { id: string }; snapshots.add(captured.id);
   await run(['policy', cliSnapshot, cliPolicy]); const name = newTarget(), start = performance.now(); const output = await run(['restore', cliSnapshot, cliPolicy, name]); metrics['cliRestoreMs'] = performance.now() - start;
   expect(output).not.toContain(env.RECOVERY_KEY); expect(JSON.parse(output)).toMatchObject({ target: name, snapshotId: captured.id }); expect(await recoveryReady(f.client.db(name))).toBe(true);
+});
+
+it('preserves personal message/chat privacy, unpinning and pending group deletion when restoring an earlier schema-011 snapshot', async () => {
+  const direct = (await sync.createDirect(owner.token, peer.id)).conversationId;
+  const directMessage = await sync.send(peer.token, command(direct, 'Clear this personal history'));
+  const personal = (await sync.createGroup(owner.token, randomUUID(), 'Personal policy after backup')).conversationId;
+  await sync.invite(owner.token, personal, peer.id); await sync.respondInvitation(peer.token, personal, true);
+  const hiddenMessage = await sync.send(owner.token, command(personal, 'Hide only for peer'));
+  await sync.mutate(owner.token, { kind: 'pin', commandId: randomUUID(), conversationId: personal, messageId: hiddenMessage.message.messageId, active: true });
+  const doomed = (await sync.createGroup(owner.token, randomUUID(), 'Deleted after backup')).conversationId;
+  await sync.invite(owner.token, doomed, peer.id); await sync.respondInvitation(peer.token, doomed, true);
+  const ticket = await files.reserve(owner.token, { commandId: randomUUID(), conversationId: doomed, name: 'retire-after-backup.txt', kind: 'text', size: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex') });
+  expect((await fetch(ticket.url, { method: 'PUT', headers: ticket.headers, body: bytes })).status).toBe(200); await files.finalize(owner.token, ticket.attachment.id, randomUUID());
+  for (let n = 0; n < 10 && (await files.files().findOne({ _id: ticket.attachment.id }))?.state !== 'ready'; n++) await new AttachmentWorker(files).runOnce();
+  expect((await files.files().findOne({ _id: ticket.attachment.id }))?.state).toBe('ready');
+  await sync.send(owner.token, { ...command(doomed, 'Do not restore a deleted group body'), attachmentIds: [ticket.attachment.id] });
+  const saved = directory + '/chat010.crb', authority = directory + '/chat010-policy.crb';
+  const captured = await captureSnapshot(f.config, saved, key); snapshots.add(captured.id);
+  await sync.mutate(peer.token, { kind: 'hide', commandId: randomUUID(), conversationId: personal, messageId: hiddenMessage.message.messageId });
+  await sync.mutate(owner.token, { kind: 'pin', commandId: randomUUID(), conversationId: personal, messageId: hiddenMessage.message.messageId, active: false });
+  await sync.preference(peer.token, personal, randomUUID(), 'archive-chat', true); await sync.preference(peer.token, personal, randomUUID(), 'pin-chat', true);
+  await sync.manage(owner.token, direct, randomUUID(), 'delete'); await sync.manage(owner.token, doomed, randomUUID(), 'delete-group');
+  // Capture before cleanup drains: the durable request itself must protect old content.
+  expect((await files.files().findOne({ _id: ticket.attachment.id }))?.state).toBe('ready');
+  await capturePolicy(f.config, saved, authority, key);
+  const restored = newTarget(); await restoreSnapshot(f.config, saved, authority, key, restored); const db = f.client.db(restored);
+  expect(await db.collection<MembershipRecord>('memberships').findOne({ conversationId: direct, userId: owner.id })).toMatchObject({ state: 'active', hidden: true });
+  expect(await db.collection<VisibilityRecord>('visibilityIntervals').findOne({ conversationId: direct, userId: owner.id, startSeq: { $lte: Long.fromString(directMessage.message.creationSequence) }, endSeq: null })).toBeNull();
+  expect(await db.collection<ConversationRecord>('conversations').findOne({ _id: doomed })).toMatchObject({ state: 'archived', deletionRequestedAt: expect.any(Date) });
+  expect(await db.collection<MessageRecord>('messages').findOne({ conversationId: doomed })).toMatchObject({ text: '', deletedAt: expect.any(Date) });
+  expect(await db.collection<AttachmentRecord>('attachments').findOne({ _id: ticket.attachment.id })).toMatchObject({ state: 'deleted', approvedKey: null });
+  expect(await recoveryReady(db)).toBe(true);
+  expect(await db.collection<MessageRecord>('messages').findOne({ _id: hiddenMessage.message.messageId })).toMatchObject({ text: 'Hide only for peer', deletedAt: null, hiddenFor: [peer.id], pinned: false });
+  expect(await db.collection<MembershipRecord>('memberships').findOne({ conversationId: personal, userId: peer.id })).toMatchObject({ pinned: true, archived: true });
+  const legacy = directory + '/chat010-declared009.crb', legacyPolicy = directory + '/chat010-declared009-policy.crb';
+  const altered = await rewrite(saved, legacy, manifest => { manifest.detail['markers'] = JSON.stringify((JSON.parse(String(manifest.detail['markers'])) as unknown[]).slice(0, 9)); });
+  await rewrite(authority, legacyPolicy, manifest => { manifest.detail['snapshotId'] = altered.id; });
+  const rejected = newTarget(); await expect(restoreSnapshot(f.config, legacy, legacyPolicy, key, rejected)).rejects.toThrow('schema-011 snapshot'); expect(await f.client.db(rejected).listCollections().hasNext()).toBe(false);
 });

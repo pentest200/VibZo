@@ -8,8 +8,8 @@ import type { Config } from '@chat/config';
 import { RecoveryError } from './bundle.js';
 const execute = promisify(execFile);
 export function supportedMarkers(value: unknown): boolean {
-  const ids = ['001_auth', '002_conversations', '003_messaging', '004_sync', '005_attachments', '006_safety', '007_calls', '008_operations', '009_avatars'];
-  return Array.isArray(value) && [8, 9].includes(value.length) && value.every((row, index) => row && row._id === ids[index] && row.appliedAt instanceof Date && Number.isFinite(row.appliedAt.getTime()));
+  const ids = ['001_auth', '002_conversations', '003_messaging', '004_sync', '005_attachments', '006_safety', '007_calls', '008_operations', '009_avatars', '010_chat_experience', '011_chat_interactions'];
+  return Array.isArray(value) && [8, 9, 10, 11].includes(value.length) && value.every((row, index) => row && row._id === ids[index] && row.appliedAt instanceof Date && Number.isFinite(row.appliedAt.getTime()));
 }
 export const dockerBase = ['--config', '.cache/docker'];
 function childEnvironment() { const env = { ...process.env }; delete env['RECOVERY_KEY']; return env; }

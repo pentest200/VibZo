@@ -19,7 +19,7 @@ export async function loadPolicy(path: string, key: Buffer) {
   if (manifest.kind !== 'policy' || policyCollections.some(name => !result[name])) throw new RecoveryError('Incomplete policy');
   return { manifest, policy: result as Policy };
 }
-export async function sanitize(client: MongoClient, db: Db, config: Config, policy: Policy) {
+export async function sanitize(client: MongoClient, db: Db, config: Config, policy: Policy, experience = false, interactions = false) {
   const now = new Date(), users = db.collection<UserRecord>('users'), current = new Map(policy.users.map(row => [String(row['_id']), row as UserRecord]));
   const deleted = new Set<string>();
   for await (const user of users.find()) {
@@ -31,15 +31,24 @@ export async function sanitize(client: MongoClient, db: Db, config: Config, poli
     await users.replaceOne({ _id: user._id }, safe);
   }
   const service = new SafetyService(new AuthService(config, client, db));
+  const deletedGroups = new Set(policy.conversations.filter(row => !!row['deletionRequestedAt']).map(row => String(row['_id'])));
   // Reserve sequence positions from the later authority boundary before making new events.
   for (const current of policy.conversations) await db.collection<{ _id: string; nextEventSeq: Long }>('conversations').updateOne({ _id: String(current['_id']) }, { $max: { nextEventSeq: current['nextEventSeq'] as Long } });
   for (const current of policy.inboxCounters) {
     if (!await users.findOne({ _id: String(current['_id']) })) continue;
     await db.collection<Document & { _id: string }>('inboxCounters').updateOne({ _id: String(current['_id']) }, { $max: { sequence: current['sequence'] }, $setOnInsert: { schemaVersion: 1, guardVersion: 0, createdAt: now } }, { upsert: true });
   }
-  const tombstones = new Set(policy.messages.map(row => String(row['_id'])));
-  for await (const row of db.collection<{ _id: string; senderId: string; deletedAt: Date | null }>('messages').find({ deletedAt: null })) {
-    if (tombstones.has(row._id) || deleted.has(row.senderId)) {
+  const tombstones = new Set(policy.messages.filter(row => !!row['deletedAt']).map(row => String(row['_id'])));
+  if (interactions) {
+    const latestMessages = new Map(policy.messages.map(row => [String(row['_id']), row]));
+    for await (const row of db.collection<Document & { _id: string }>('messages').find()) {
+      const latest = latestMessages.get(row._id), hiddenFor = [...new Set([...(row['hiddenFor'] as string[] ?? []), ...(latest?.['hiddenFor'] as string[] ?? [])])];
+      if (hiddenFor.length > 50) throw new RecoveryError('Personal deletion policy exceeds supported membership bound');
+      await db.collection<Document & { _id: string }>('messages').updateOne({ _id: row._id }, { $set: { hiddenFor, pinned: !!latest?.['pinned'] && !tombstones.has(row._id) } });
+    }
+  }
+  for await (const row of db.collection<{ _id: string; senderId: string; conversationId: string; deletedAt: Date | null }>('messages').find({ deletedAt: null })) {
+    if (tombstones.has(row._id) || deleted.has(row.senderId) || deletedGroups.has(row.conversationId)) {
       const session = client.startSession();
       try { await session.withTransaction(() => service.scrubMessage(row._id, 'restore', session), { readConcern: { level: 'snapshot' }, writeConcern: { w: 'majority', j: true }, timeoutMS: 10000 }); }
       finally { await session.endSession(); }
@@ -48,7 +57,7 @@ export async function sanitize(client: MongoClient, db: Db, config: Config, poli
   const members = db.collection<MembershipRecord>('memberships'), authority = new Map(policy.memberships.map(row => [String(row['_id']), row as MembershipRecord]));
   for await (const row of members.find()) {
     const latest = authority.get(row._id), active = row.state === 'active' && latest?.state === 'active' && !deleted.has(row.userId);
-    await members.updateOne({ _id: row._id }, { $set: { state: active ? 'active' : 'removed', role: latest?.role ?? row.role, invitationExpiresAt: null, updatedAt: now } });
+    await members.updateOne({ _id: row._id }, { $set: { state: active ? 'active' : 'removed', role: latest?.role ?? row.role, invitationExpiresAt: null, updatedAt: now, ...(experience ? { hidden: !!row.hidden || !!latest?.hidden } : {}), ...(interactions ? { pinned: !!latest?.pinned, archived: !!latest?.archived } : {}) } });
   }
   const oldWindows = await db.collection<VisibilityRecord>('visibilityIntervals').find().limit(10001).toArray();
   if (oldWindows.length > 10000) throw new RecoveryError('Visibility budget exceeded');
@@ -65,6 +74,7 @@ export async function sanitize(client: MongoClient, db: Db, config: Config, poli
   const states = new Map(policy.conversations.map(row => [String(row['_id']), row]));
   for await (const conversation of db.collection<ConversationRecord>('conversations').find()) {
     if (!states.has(conversation._id) || states.get(conversation._id)!['state'] !== 'active' || conversation.kind === 'group' && !await members.findOne({ conversationId: conversation._id, state: 'active', role: 'owner' })) await db.collection<ConversationRecord>('conversations').updateOne({ _id: conversation._id }, { $set: { state: 'archived' } });
+    if (experience && deletedGroups.has(conversation._id)) await db.collection<ConversationRecord>('conversations').updateOne({ _id: conversation._id }, { $set: { state: 'archived', deletionRequestedAt: states.get(conversation._id)!['deletionRequestedAt'] as Date }, $unset: { historyPurgedAt: '' } });
   }
   // Keep the union of old/current blocks: recovery never silently unblocks a pair.
   for (const block of policy.blocks) {
@@ -78,7 +88,7 @@ export async function sanitize(client: MongoClient, db: Db, config: Config, poli
   const files = new Map(policy.attachments.map(row => [String(row['_id']), row as AttachmentRecord]));
   for await (const row of db.collection<AttachmentRecord>('attachments').find()) {
     const latest = files.get(row._id);
-    if (row.purpose === 'avatar' || row.state !== 'ready' || !latest || latest.state !== 'ready' || deleted.has(row.ownerId) || !!row.messageId && tombstones.has(row.messageId)) {
+    if (row.purpose === 'avatar' || row.state !== 'ready' || !latest || latest.state !== 'ready' || deleted.has(row.ownerId) || !!row.messageId && tombstones.has(row.messageId) || !!row.conversationId && deletedGroups.has(row.conversationId)) {
       await db.collection<AttachmentRecord>('attachments').updateOne({ _id: row._id }, { $set: { state: 'deleted', name: 'Deleted file', approvedKey: null, approvedSha256: null, approvedSize: 0, approvedType: null, reservedBytes: 0, sha256: '', sourceKey: `${db.databaseName}/retired/${row._id}`, sourceCleaned: true, error: 'Retired during recovery.' } });
     } else if (row.approvedKey !== latest.approvedKey || row.approvedSha256 !== latest.approvedSha256) throw new RecoveryError('Current immutable object authority differs');
   }

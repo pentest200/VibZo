@@ -40,7 +40,7 @@ export class AttachmentWorker {
         await quota(db, row.ownerId, session); const reservedBytes = row.size + output.length;
         await db.collection<AttachmentQuota>('attachmentQuotas').updateOne({ _id: row.ownerId }, { $inc: { bytes: reservedBytes - current.reservedBytes } }, { session });
         await this.service.files().updateOne({ _id: row._id }, { $set: { state: 'ready', approvedKey: job.candidateKey, approvedSize: output.length, approvedType: type, approvedSha256: createHash('sha256').update(output).digest('hex'), reservedBytes,
-          kind: image ? 'webp' : kind, name: `${row.name.replace(/\.[^.]*$/, '').slice(0, 115)}.${image ? 'webp' : kind === 'pdf' ? 'pdf' : 'txt'}` } }, { session });
+          kind: image ? 'webp' : kind, name: `${row.name.replace(/\.[^.]*$/, '').slice(0, 115)}.${image ? 'webp' : kind === 'text' ? 'txt' : kind}` } }, { session });
       }); committed = true;
     } catch (error) {
       const rejected = error instanceof FileRejected, removed = error instanceof DomainError && error.status === 403;
